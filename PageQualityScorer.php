@@ -1,6 +1,7 @@
 <?php
 
-use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Revision\SlotRecord;
 
 abstract class PageQualityScorer {
 
@@ -180,7 +181,7 @@ abstract class PageQualityScorer {
 	 * @return bool
 	 */
 	public static function isPageScoreable( Title $title ): bool {
-		$allowedNamespaces = \MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
+		$allowedNamespaces = MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
 
 		if ( $title->isRedirect() ) {
 			return false;
@@ -280,12 +281,12 @@ abstract class PageQualityScorer {
 		$dbw = wfGetDB( DB_PRIMARY );
 		$dbw->delete(
 			'pq_score',
-			['page_id' => $title->getArticleID()],
+			[ 'page_id' => $title->getArticleID() ],
 			__METHOD__
 		);
 		$dbw->delete(
 			'pq_issues',
-			['page_id' => $title->getArticleID()],
+			[ 'page_id' => $title->getArticleID() ],
 			__METHOD__
 		);
 	}
@@ -307,7 +308,7 @@ abstract class PageQualityScorer {
 		// Retrieve the existing record
 		$res = $dbr->selectRow(
 			'pq_score',
-			['score', 'status'],
+			[ 'score', 'status' ],
 			[ 'page_id' => $title->getArticleID() ]
 		);
 
@@ -322,14 +323,52 @@ abstract class PageQualityScorer {
 		}
 
 		if ( empty( $page_html ) ) {
-			$pageObj = WikiPage::factory( $title );
-			$page_html = $pageObj->getContent( RevisionRecord::RAW )->getParserOutput( $title )->getText();
+			$services = MediaWikiServices::getInstance();
+			$revisionLookup = $services->getRevisionLookup();
+			$revision = $revisionLookup->getRevisionByTitle( $title );
+
+			if ( $revision ) {
+				// Get the main content slot
+				$content = $revision->getContent( SlotRecord::MAIN );
+
+				if ( $content instanceof TextContent ) {
+					// Get the parser
+					$parser = $services->getParser();
+
+					// Configure parser options
+					$popts = ParserOptions::newFromAnon();
+					// $popts->setRenderReason('page-quality-scorer');
+
+					// Basic parser options
+					$popts->setOption( 'enableLimitReport', false );
+					$popts->setOption( 'tidy', true );
+					// Process templates
+					$popts->setOption( 'preSaveTransform', true );
+
+					// Set a custom preprocessing function to filter out transclusion tags before parsing
+					$wikitext = $content->getText();
+
+					// Filter out common transclusion syntax
+					$filtered_wikitext = self::filterTransclusions( $wikitext );
+
+					// Parse with modified content
+					$parserOutput = $parser->parse( $filtered_wikitext, $title, $popts );
+					$page_html = $parserOutput->getText();
+				} else {
+					// Fallback for non-text content
+					$page_html = "<!-- Non-text content cannot be scored -->";
+				}
+			} else {
+				// No revision found
+				$page_html = "<!-- No revision found for this page -->";
+			}
 		}
+
 		self::loadAllScoreres();
 		list( $score, $responses ) = self::runAllScoreres( $page_html );
 
 		$old_score = $res ? $res->score : 0;
-		$old_status = $res ? $res->status : PageQualityScorer::GREEN;
+		$old_status = $res ? $res->status : self::GREEN;
 
 		$hasRedIssue = false;
 		foreach ( $responses as $type => $type_responses ) {
@@ -355,10 +394,11 @@ abstract class PageQualityScorer {
 		if ( $score > 0 ) {
 			$status = self::YELLOW;
 		}
-		if ( $hasRedIssue && $score > PageQualityScorer::getSetting( "red" ) ) {
+		if ( $hasRedIssue && $score > self::getSetting( "red" ) ) {
 			$status = self::RED;
 		}
 
+		// @todo isn't this wrong? The score can be the same but the different issues might be different
 		if ( $old_score <> $score || $status <> $old_status ) {
 			$dbw->insert(
 				'pq_score_log',
@@ -376,9 +416,6 @@ abstract class PageQualityScorer {
 			);
 		}
 
-
-
-
 		$dbw->insert(
 			'pq_score',
 			[
@@ -391,6 +428,35 @@ abstract class PageQualityScorer {
 		);
 
 		return [ $score, $responses ];
+	}
+
+	/**
+	 * Filter out transclusion syntax from wikitext
+	 *
+	 * @param string $wikitext The raw wikitext content
+	 * @return string Filtered wikitext without transclusion syntax
+	 */
+	protected static function filterTransclusions( string $wikitext ): string {
+		// Remove LabeledSectionTransclusion tags (#lsth)
+		$wikitext = preg_replace( '/<section[^>]*>.*?<\/section>/s', '', $wikitext );
+
+		// Remove standard MediaWiki transclusions
+		// This removes {{:Page}} style transclusions while preserving {{Template}} style templates
+		$wikitext = preg_replace( '/\{\{:(.*?)\}\}/s', '<!-- Transclusion removed: $1 -->', $wikitext );
+
+		// Filter out "הטמעת כותרת" template calls which perform transclusions
+		$wikitext = preg_replace( '/\{\{הטמעת כותרת\|(.*?)\}\}/s', '<!-- Transclusion template removed: $1 -->', $wikitext );
+
+		// Remove <includeonly> tags content when viewed directly
+		$wikitext = preg_replace( '/<includeonly>(.*?)<\/includeonly>/s', '', $wikitext );
+
+		// Remove LST section markers
+		$wikitext = preg_replace( '/<section[^>]*\/>/', '', $wikitext );
+
+		// Remove any other extension transclusion tags
+		$wikitext = preg_replace( '/<lsection[^>]*>.*?<\/lsection>/s', '', $wikitext );
+
+		return $wikitext;
 	}
 
 	/**
@@ -433,12 +499,16 @@ abstract class PageQualityScorer {
 	 * @param int|null $status
 	 * @return string
 	 */
-	public static function getHumanReadableStatus(?int $status ) {
+	public static function getHumanReadableStatus( ?int $status ) {
 		switch ( $status ) {
-			case self::RED: return 'red';
-			case self::YELLOW: return 'yellow';
-			case self::GREEN: return 'green';
-			default: return 'unknown';
+			case self::RED:
+				return 'red';
+			case self::YELLOW:
+				return 'yellow';
+			case self::GREEN:
+				return 'green';
+			default:
+				return 'unknown';
 		}
 	}
 
@@ -446,11 +516,14 @@ abstract class PageQualityScorer {
 	 * @param int|null $severity
 	 * @return string
 	 */
-	public static function getHumanReadableSeverity(?int $severity ) {
+	public static function getHumanReadableSeverity( ?int $severity ) {
 		switch ( $severity ) {
-			case self::RED: return 'red';
-			case self::YELLOW: return 'yellow';
-			default: return 'unknown';
+			case self::RED:
+				return 'red';
+			case self::YELLOW:
+				return 'yellow';
+			default:
+				return 'unknown';
 		}
 	}
 

@@ -5,6 +5,8 @@ A MediaWiki extension to monitor and improve Page Quality, by several pre-define
 - Number of items in a list
 - Etc. (TBD: make this list comprehensive)
 
+The extension works on the rendered HTML of the page, and not on the wikitext itself, and excludes transclusions.
+
 ## Special pages
 - Special:PageQuality: main dashboard
 - Special:PageQuality/reports: detailed reports
@@ -39,6 +41,8 @@ Elements with the CSS class `.pagequality-ignore` will be excluded from the audi
 - Perhaps: Make the issues' sidebar look and behave like Google Docs' "Version history" drawer
 
 ## Changlog
+1.0.1 (2025-02-27):
+- Ignore transclusions
 1.0.0a:
 - "Red" pages are now only those that have a red-level issue *and also* a minimum score.
 - It is highly recommended to empty all the extension's tables prior to upgrading, as the compatibility with the older schema is wonky.
