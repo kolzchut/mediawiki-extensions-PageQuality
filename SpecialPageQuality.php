@@ -24,6 +24,7 @@ class SpecialPageQuality extends SpecialPage {
 	 * @inheritDoc
 	 */
 	public function execute( $subPage ) {
+		parent::execute( $subPage );
 		$linkDefs = [
 			'pq_reports' => 'Special:PageQuality/reports',
 			'pq_history' => 'Special:PageQuality/history',
