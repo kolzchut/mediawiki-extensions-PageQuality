@@ -86,7 +86,8 @@ class PageQualityHooks {
 			'pq_score_log', 'timestamp', "$dir/pq_score_log_drop_old_timestamp_2022-08-18.sql"
 		);
 		$updater->addExtensionField( 'pq_score', 'status', "$dir/pq_score_patch_add_status.2024-05-19.sql" );
-		$updater->modifyExtensionTable( 'pq_score_log', "$dir/pq_score_log_add_status_2024-05-19.sql"  );
+		$updater->addExtensionField( 'pq_score_log', 'new_status', "$dir/pq_score_log_add_new_status_2024-05-19.sql" );
+		$updater->addExtensionField( 'pq_score_log', 'old_status', "$dir/pq_score_log_add_old_status_2024-05-19.sql" );
 
 		$updater->addExtensionUpdate( [
 			'runMaintenance',
