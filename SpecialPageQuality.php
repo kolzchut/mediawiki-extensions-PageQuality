@@ -1,6 +1,7 @@
 <?php
 use MediaWiki\Extension\ArticleContentArea\ArticleContentArea;
 use MediaWiki\Extension\ArticleType\ArticleType;
+use Wikimedia\Rdbms\Platform\ISQLPlatform;
 
 class SpecialPageQuality extends SpecialPage {
 
@@ -195,7 +196,7 @@ class SpecialPageQuality extends SpecialPage {
 				}
 			}
 			if ( $this->getRequest()->getVal( 'regenerate_scores' ) == "yes" ) {
-				$dbw->delete( 'pq_issues', IDatabase::ALL_ROWS );
+				$dbw->delete( 'pq_issues', ISQLPlatform::ALL_ROWS );
 				$query = self::getQueryForAllPages();
 				$res = $dbr->select(
 					$query['tables'],
@@ -209,7 +210,7 @@ class SpecialPageQuality extends SpecialPage {
 				foreach ( $res as $row ) {
 					$jobs[] = new PageQualiyRefreshJob( Title::newFromId( $row->page_id ) );
 				}
-				JobQueueGroup::singleton()->push( $jobs );
+				MediaWiki\MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
 			}
 		}
 

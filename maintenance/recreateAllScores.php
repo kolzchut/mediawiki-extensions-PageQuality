@@ -29,6 +29,8 @@ if ( getenv( 'MW_INSTALL_PATH' ) ) {
 	require_once __DIR__ . '/../../../maintenance/Maintenance.php';
 }
 
+use Wikimedia\Rdbms\Platform\ISQLPlatform;
+
 $maintClass = RecreateAllScores::class;
 
 class RecreateAllScores extends Maintenance {
@@ -56,9 +58,9 @@ class RecreateAllScores extends Maintenance {
 		$dbw = $this->getDB( DB_PRIMARY );
 		$dbr = $this->getDB( DB_REPLICA );
 
-		// $dbw->delete( 'pq_issues', IDatabase::ALL_ROWS );
+		// $dbw->delete( 'pq_issues', ISQLPlatform::ALL_ROWS );
 		if ( $this->hasOption( 'reset' ) ) {
-			$dbw->delete( 'pq_score_log', IDatabase::ALL_ROWS );
+			$dbw->delete( 'pq_score_log', ISQLPlatform::ALL_ROWS );
 		}
 
 		$basicQuery = $this->getBasicQuery();
@@ -87,7 +89,7 @@ class RecreateAllScores extends Maintenance {
 				$startId = $row->page_id;
 			}
 
-			$this->output( "Processed {$totalNumRows} titles, ending in {$startId}\n" );
+			$this->output( "Processed $totalNumRows titles, ending in $startId\n" );
 		}
 
 		$this->output( "\nDone.\n" );
@@ -96,7 +98,7 @@ class RecreateAllScores extends Maintenance {
 	/**
 	 * @return array
 	 */
-	private function getBasicQuery() {
+	private function getBasicQuery(): array {
 		$query[ 'options' ] = [
 			'LIMIT' => $this->getBatchSize(),
 			'ORDER BY' => 'page_id'
