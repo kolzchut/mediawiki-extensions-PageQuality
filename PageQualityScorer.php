@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 
 abstract class PageQualityScorer {
@@ -152,7 +153,7 @@ abstract class PageQualityScorer {
 		if ( !empty( self::$settings ) ) {
 			return self::$settings;
 		}
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 		$res = $dbr->select(
 			'pq_settings',
 			'*',
@@ -180,7 +181,7 @@ abstract class PageQualityScorer {
 	 * @return bool
 	 */
 	public static function isPageScoreable( Title $title ): bool {
-		$allowedNamespaces = \MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
+		$allowedNamespaces = MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
 
 		if ( $title->isRedirect() ) {
 			return false;
@@ -256,7 +257,7 @@ abstract class PageQualityScorer {
 	public static function getScorForPage( Title $title ): array {
 		self::loadAllScoreres();
 
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 		$res = $dbr->select(
 			'pq_issues',
 			'*',
@@ -277,7 +278,7 @@ abstract class PageQualityScorer {
 	}
 
 	protected static function deleteDataForPage( Title $title ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
 		$dbw->delete(
 			'pq_score',
 			['page_id' => $title->getArticleID()],
@@ -301,8 +302,8 @@ abstract class PageQualityScorer {
 	public static function runScorerForPage(
 		Title $title, string $page_html = "", bool $automated_run = false
 	): array {
-		$dbw = wfGetDB( DB_PRIMARY );
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
+		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
 
 		// Retrieve the existing record
 		$res = $dbr->selectRow(
@@ -322,8 +323,11 @@ abstract class PageQualityScorer {
 		}
 
 		if ( empty( $page_html ) ) {
-			$pageObj = WikiPage::factory( $title );
-			$page_html = $pageObj->getContent( RevisionRecord::RAW )->getParserOutput( $title )->getText();
+			$pageObj = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromTitle( $title );
+			$parserOutput = $pageObj->getParserOutput();
+			if ( $parserOutput ) {
+				$page_html = $parserOutput->getText();
+			}
 		}
 		self::loadAllScoreres();
 		list( $score, $responses ) = self::runAllScoreres( $page_html );
