@@ -1,10 +1,24 @@
 <?php
 
-use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\MigrateTimestampToMWFormat;
-use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\fixScoreLogAfterAddingStatus;
-use MediaWiki\MediaWikiServices;
+namespace MediaWiki\Extension\PageQuality;
 
-class PageQualityHooks {
+use DatabaseUpdater;
+use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\fixScoreLogAfterAddingStatus;
+use MediaWiki\Hook\BeforePageDisplayHook;
+use MediaWiki\Html\Html;
+use MediaWiki\Installer\Hook\LoadExtensionSchemaUpdatesHook;
+use MediaWiki\Output\OutputPage;
+use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Storage\Hook\PageSaveCompleteHook;
+use Skin;
+use WikiPage;
+
+class Hooks implements BeforePageDisplayHook, PageSaveCompleteHook, LoadExtensionSchemaUpdatesHook {
+
+	public function __construct(
+		private readonly PermissionManager $permissionManager,
+	) {
+	}
 
 	/**
 	 * @param WikiPage $wikiPage
@@ -15,15 +29,13 @@ class PageQualityHooks {
 	 * @param \MediaWiki\Storage\EditResult $editResult
 	 *
 	 * @return void
-	 * @throws MWException
 	 */
-	public static function onPageSaveComplete(
-		WikiPage $wikiPage, MediaWiki\User\UserIdentity $user, string $summary, int $flags,
-		MediaWiki\Revision\RevisionRecord $revisionRecord, MediaWiki\Storage\EditResult $editResult
-	) {
+	public function onPageSaveComplete(
+		$wikiPage, $user, $summary, $flags, $revisionRecord, $editResult
+	): void {
 		// @todo Check for null edits
-		if ( PageQualityScorer::isPageScoreable( $wikiPage->getTitle() ) ) {
-			list( $score, $responses ) = PageQualityScorer::runScorerForPage( $wikiPage->getTitle() );
+		if ( Scorer::isPageScoreable( $wikiPage->getTitle() ) ) {
+			Scorer::runScorerForPage( $wikiPage->getTitle() );
 		}
 	}
 
@@ -33,11 +45,10 @@ class PageQualityHooks {
 	 *
 	 * @return void
 	 */
-	public static function onBeforePageDisplay( OutputPage $out, Skin $skin ) {
-		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
-		if ( $permissionManager->userHasRight( $out->getUser(), 'viewpagequality' ) ) {
-			if ( PageQualityScorer::isPageScoreable( $out->getTitle() ) ) {
-				list( $score, $responses ) = PageQualityScorer::getScorForPage( $out->getTitle() );
+	public function onBeforePageDisplay( $out, $skin ): void {
+		if ( $this->permissionManager->userHasRight( $out->getUser(), 'viewpagequality' ) ) {
+			if ( Scorer::isPageScoreable( $out->getTitle() ) ) {
+				[ $score ] = Scorer::getScorForPage( $out->getTitle() );
 
 				$link = Html::rawElement(
 					'a',
@@ -45,8 +56,7 @@ class PageQualityHooks {
 						'href' => '#',
 						'data-target' => '#pagequality-sidebar'
 					],
-					$out->msg( 'pq_quality_score_link' )->escaped(
-					) . ' <span class="badge">' . $score . '</span>'
+					$out->msg( 'pq_quality_score_link' )->escaped() . ' <span class="badge">' . $score . '</span>'
 				);
 
 				$out->setIndicators( [ 'pq_status' => $link ] );
@@ -61,8 +71,8 @@ class PageQualityHooks {
 	 *
 	 * @param DatabaseUpdater $updater
 	 */
-	public static function onLoadExtensionSchemaUpdate( DatabaseUpdater $updater ) {
-		$dir = __DIR__ . '/sql';
+	public function onLoadExtensionSchemaUpdates( $updater ): void {
+		$dir = __DIR__ . '/../sql';
 
 		$updater->addExtensionTable( 'pq_issues', "$dir/pq_issues.sql" );
 		$updater->addExtensionTable( 'pq_settings', "$dir/pq_settings.sql" );
@@ -94,7 +104,6 @@ class PageQualityHooks {
 			fixScoreLogAfterAddingStatus::class,
 			"$dir/../maintenance/PostDatabaseUpdate/fixScoreLogAfterAddingStatus.php"
 		] );
-
 	}
 
 }

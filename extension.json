@@ -6,20 +6,16 @@
 	],
 	"url": "https://www.mediawiki.org/wiki/Extension:PageQuality",
 	"description": "Monitor and improve page quality",
-	"version": "1.0a",
+	"version": "1.0.2",
 	"license-name": "GPL-2.0-or-later",
 	"type": "Special Page",
+	"AutoloadNamespaces": {
+		"MediaWiki\\Extension\\PageQuality\\": "includes/",
+		"MediaWiki\\Extension\\PageQuality\\Scorer\\": "scorers/"
+	},
 	"AutoloadClasses": {
-		"PageQualityHooks": "PageQualityHooks.php",
-		"PageQualityScorer": "PageQualityScorer.php",
-		"PageQualityReportPager": "PageQualityReportPager.php",
-		"PageQualityChangesReportPager": "PageQualityChangesReportPager.php",
-		"SpecialPageQuality": "SpecialPageQuality.php",
-		"PageQualityApi": "PageQualityApi.php",
-		"PageQualiyRefreshJob": "PageQualiyRefreshJob.php",
 		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\MigrateTimestampToMWFormat": "maintenance/PostDatabaseUpdate/migrateTimestampToMWFormat.php",
 		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\fixScoreLogAfterAddingStatus": "maintenance/PostDatabaseUpdate/fixScoreLogAfterAddingStatus.php"
-
 	},
 	"config": {
 		"PageQualityNamespaces": {
@@ -42,18 +38,30 @@
 		}
 	},
 	"APIModules": {
-		"page_quality_api": "PageQualityApi"
+		"page_quality_api": {
+			"class": "MediaWiki\\Extension\\PageQuality\\Api",
+			"services": [ "TitleFactory" ]
+		}
 	},
 	"SpecialPages": {
-		"PageQuality": "SpecialPageQuality"
+		"PageQuality": {
+			"class": "MediaWiki\\Extension\\PageQuality\\SpecialPageQuality",
+			"services": [ "TitleFactory" ]
+		}
 	},
 	"JobClasses": {
-		"updatePageQuality": "PageQualiyRefreshJob"
+		"updatePageQuality": "MediaWiki\\Extension\\PageQuality\\RefreshJob"
+	},
+	"HookHandlers": {
+		"main": {
+			"class": "MediaWiki\\Extension\\PageQuality\\Hooks",
+			"services": [ "PermissionManager" ]
+		}
 	},
 	"Hooks": {
-		"LoadExtensionSchemaUpdates": "PageQualityHooks::onLoadExtensionSchemaUpdate",
-		"BeforePageDisplay": "PageQualityHooks::onBeforePageDisplay",
-		"PageSaveComplete": "PageQualityHooks::onPageSaveComplete"
+		"LoadExtensionSchemaUpdates": "main",
+		"BeforePageDisplay": "main",
+		"PageSaveComplete": "main"
 	},
 	"MessagesDirs": {
 		"PageQuality": [

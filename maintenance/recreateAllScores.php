@@ -85,7 +85,7 @@ class RecreateAllScores extends Maintenance {
 			$totalNumRows = $totalNumRows + $res->numRows();
 			foreach ( $res as $row ) {
 				$title = Title::newFromID( $row->page_id );
-				PageQualityScorer::runScorerForPage( $title, "", true );
+				\MediaWiki\Extension\PageQuality\Scorer::runScorerForPage( $title, "", true );
 				$startId = $row->page_id;
 			}
 

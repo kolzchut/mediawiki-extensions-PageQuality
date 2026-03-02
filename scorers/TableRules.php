@@ -1,21 +1,25 @@
 <?php
 
-class PageQualityScorerTableRules extends PageQualityScorer {
+namespace MediaWiki\Extension\PageQuality\Scorer;
 
-	/** @inheritdoc */
-	public static $checksList = [
+use MediaWiki\Extension\PageQuality\Scorer as BaseScorer;
+
+class TableRules extends BaseScorer {
+
+	/** @inheritDoc */
+	public static array $checksList = [
 		"table_columns" => [
 			"name" => "pag_scorer_table_columns",
 			"description" => "table_columns_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 3,
 		],
 		"table_rows" => [
 			"name" => "pag_scorer_table_rows",
 			"description" => "table_rows_desc",
 			"check_type" => "min",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 3,
 		],
 	];
@@ -23,7 +27,7 @@ class PageQualityScorerTableRules extends PageQualityScorer {
 	/**
 	 * @inheritDoc
 	 */
-	public function calculatePageScore() {
+	public function calculatePageScore(): ?array {
 		$response = [];
 
 		$tableNodes = self::getDOM()->getElementsByTagName( 'table' );

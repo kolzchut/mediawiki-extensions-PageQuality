@@ -1,35 +1,39 @@
 <?php
 
-class PageQualityScorerEmphasisRules extends PageQualityScorer {
+namespace MediaWiki\Extension\PageQuality\Scorer;
 
-	/** @inheritdoc */
-	public static $checksList = [
+use MediaWiki\Extension\PageQuality\Scorer as BaseScorer;
+
+class EmphasisRules extends BaseScorer {
+
+	/** @inheritDoc */
+	public static array $checksList = [
 		"emphasis_lines_min" => [
 			"name" => "pag_scorer_emphasis_lines_min",
 			"description" => "emphasis_lines_num_desc",
 			"check_type" => "min",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 2,
 		],
 		"emphasis_lines_num" => [
 			"name" => "pag_scorer_emphasis_lines_num",
 			"description" => "emphasis_lines_num_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::RED,
+			"severity" => BaseScorer::RED,
 			"default" => 5,
 		],
 		"emphasis_line_length_min" => [
 			"name" => "pag_scorer_emphasis_line_length_min",
 			"description" => "pag_scorer_emphasis_length_min_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 15,
 		],
 		"emphasis_line_length" => [
 			"name" => "pag_scorer_emphasis_length",
 			"description" => "pag_scorer_emphasis_length_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::RED,
+			"severity" => BaseScorer::RED,
 			"default" => 30
 		]
 	];
@@ -37,7 +41,7 @@ class PageQualityScorerEmphasisRules extends PageQualityScorer {
 	/**
 	 * @inheritDoc
 	 */
-	public function calculatePageScore() {
+	public function calculatePageScore(): ?array {
 		$response = [];
 		$count = 0;
 		$emphasis_gov = false;

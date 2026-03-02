@@ -1,12 +1,17 @@
 <?php
+
+namespace MediaWiki\Extension\PageQuality;
+
+use Job;
+use MediaWiki\Title\Title;
+
 /**
  * Background job to update the page quality scores
  *
  * @ingroup PageQuality
  * @author Nischay Nahata
  */
-
-class PageQualiyRefreshJob extends Job {
+class RefreshJob extends Job {
 
 	/**
 	 * @param Title $title
@@ -27,7 +32,7 @@ class PageQualiyRefreshJob extends Job {
 			return false;
 		}
 
-		PageQualityScorer::runScorerForPage( $this->title, "", true );
+		Scorer::runScorerForPage( $this->title, "", true );
 
 		return true;
 	}

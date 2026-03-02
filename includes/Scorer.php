@@ -1,27 +1,33 @@
 <?php
 
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Revision\RevisionRecord;
+namespace MediaWiki\Extension\PageQuality;
 
-abstract class PageQualityScorer {
+use DOMDocument;
+use DOMNodeList;
+use DOMXPath;
+use ExtensionRegistry;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Title\Title;
+
+abstract class Scorer {
 
 	public const GREEN = 0;
 	public const YELLOW = 1;
 	public const RED = 2;
 
 	/** @var array */
-	protected static $registered_classes = [];
+	protected static array $registered_classes = [];
 	/** @var array */
-	protected static $settings = [];
+	protected static array $settings = [];
 	/** @var array */
-	protected static $checksList = [];
-	/** @var string */
-	protected static $text = null;
+	protected static array $checksList = [];
+	/** @var string|null */
+	protected static ?string $text = null;
 	/** @var DOMDocument|null */
-	protected static $dom = null;
+	protected static ?DOMDocument $dom = null;
 
 	/** @var array */
-	protected static $general_settings = [
+	protected static array $general_settings = [
 		"red" => [
 			"name" => "pag_scorer_red_score",
 			"default" => 10,
@@ -35,9 +41,9 @@ abstract class PageQualityScorer {
 	];
 
 	/**
-	 * @return mixed
+	 * @return array|null
 	 */
-	abstract public function calculatePageScore();
+	abstract public function calculatePageScore(): ?array;
 
 	/**
 	 * This is a naive word counter, which pretty much ignores anything except spaces as word
@@ -45,9 +51,10 @@ abstract class PageQualityScorer {
 	 *
 	 * @param string $text
 	 *
-	 * @return int|void
+	 * @return int
 	 */
-	protected static function str_word_count_utf8( $text ) {
+	// phpcs:ignore MediaWiki.NamingConventions.LowerCamelFunctionsName,MediaWiki.Commenting.FunctionComment.MissingDocumentationProtected
+	protected static function str_word_count_utf8( string $text ): int {
 		// We do the following because strtr just didn't work right in utf-8 text
 		$replacements = "\n:,[]={}|*,";
 		$replacements = str_split( $replacements );
@@ -78,22 +85,19 @@ abstract class PageQualityScorer {
 	 */
 	public static function getCheckList(): array {
 		$checkList = static::$checksList;
-		$enabledChecks = [];
-		foreach ( $checkList as $check => $value ) {
-			if ( !isset( $value['disabled'] ) || $value['disabled'] !== true ) {
-				$enabledChecks[$check] = $value;
-			}
-		}
+		$enabledChecks = array_filter( $checkList, static function ( $value ) {
+			return !isset( $value['disabled'] ) || $value['disabled'] !== true;
+		} );
 		return $enabledChecks;
 	}
 
-	public static function loadAllScoreres() {
+	public static function loadAllScoreres(): void {
 		if ( !empty( static::$registered_classes ) ) {
 			return;
 		}
-		foreach ( glob( __DIR__ . "/scorers/*.php" ) as $filename ) {
+		foreach ( glob( __DIR__ . "/../scorers/*.php" ) as $filename ) {
 			include_once $filename;
-			self::$registered_classes[] = basename( $filename, '.php' );
+			self::$registered_classes[] = __NAMESPACE__ . '\\Scorer\\' . basename( $filename, '.php' );
 		}
 	}
 
@@ -102,7 +106,7 @@ abstract class PageQualityScorer {
 	 *
 	 * @return array|false|mixed|string[]
 	 */
-	public static function getSetting( string $type ) {
+	public static function getSetting( string $type ): mixed {
 		if ( array_key_exists( $type, self::getSettingValues() ) ) {
 			$setting_value = self::$settings[$type];
 		} elseif ( array_key_exists( $type, self::$general_settings ) ) {
@@ -277,16 +281,16 @@ abstract class PageQualityScorer {
 		return [ $score, $responses ];
 	}
 
-	protected static function deleteDataForPage( Title $title ) {
+	protected static function deleteDataForPage( Title $title ): void {
 		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
 		$dbw->delete(
 			'pq_score',
-			['page_id' => $title->getArticleID()],
+			[ 'page_id' => $title->getArticleID() ],
 			__METHOD__
 		);
 		$dbw->delete(
 			'pq_issues',
-			['page_id' => $title->getArticleID()],
+			[ 'page_id' => $title->getArticleID() ],
 			__METHOD__
 		);
 	}
@@ -297,7 +301,6 @@ abstract class PageQualityScorer {
 	 * @param bool $automated_run
 	 *
 	 * @return array
-	 * @throws MWException
 	 */
 	public static function runScorerForPage(
 		Title $title, string $page_html = "", bool $automated_run = false
@@ -308,7 +311,7 @@ abstract class PageQualityScorer {
 		// Retrieve the existing record
 		$res = $dbr->selectRow(
 			'pq_score',
-			['score', 'status'],
+			[ 'score', 'status' ],
 			[ 'page_id' => $title->getArticleID() ]
 		);
 
@@ -330,10 +333,10 @@ abstract class PageQualityScorer {
 			}
 		}
 		self::loadAllScoreres();
-		list( $score, $responses ) = self::runAllScoreres( $page_html );
+		[ $score, $responses ] = self::runAllScorers( $page_html );
 
 		$old_score = $res ? $res->score : 0;
-		$old_status = $res ? $res->status : PageQualityScorer::GREEN;
+		$old_status = $res ? $res->status : self::GREEN;
 
 		$hasRedIssue = false;
 		foreach ( $responses as $type => $type_responses ) {
@@ -359,7 +362,7 @@ abstract class PageQualityScorer {
 		if ( $score > 0 ) {
 			$status = self::YELLOW;
 		}
-		if ( $hasRedIssue && $score > PageQualityScorer::getSetting( "red" ) ) {
+		if ( $hasRedIssue && $score > self::getSetting( "red" ) ) {
 			$status = self::RED;
 		}
 
@@ -380,9 +383,6 @@ abstract class PageQualityScorer {
 			);
 		}
 
-
-
-
 		$dbw->insert(
 			'pq_score',
 			[
@@ -402,7 +402,7 @@ abstract class PageQualityScorer {
 	 *
 	 * @return array
 	 */
-	public static function runAllScoreres( string $text ): array {
+	public static function runAllScorers( string $text ): array {
 		self::loadDOM( $text );
 		$responses = [];
 		foreach ( self::$registered_classes as $scorer_class ) {
@@ -425,7 +425,7 @@ abstract class PageQualityScorer {
 	 *
 	 * @return DOMNodeList|false|mixed
 	 */
-	protected static function getElementsByClassName( DOMDocument $dom, string $className ) {
+	protected static function getElementsByClassName( DOMDocument $dom, string $className ): mixed {
 		$xpath = new DOMXpath( $dom );
 		$expression = '//*[contains(concat(" ", normalize-space(@class), " "), " ' . $className . ' ")]';
 		return $xpath->query( $expression );
@@ -437,25 +437,25 @@ abstract class PageQualityScorer {
 	 * @param int|null $status
 	 * @return string
 	 */
-	public static function getHumanReadableStatus(?int $status ) {
-		switch ( $status ) {
-			case self::RED: return 'red';
-			case self::YELLOW: return 'yellow';
-			case self::GREEN: return 'green';
-			default: return 'unknown';
-		}
+	public static function getHumanReadableStatus( ?int $status ): string {
+		return match ( $status ) {
+			self::RED => 'red',
+			self::YELLOW => 'yellow',
+			self::GREEN => 'green',
+			default => 'unknown',
+		};
 	}
 
 	/**
 	 * @param int|null $severity
 	 * @return string
 	 */
-	public static function getHumanReadableSeverity(?int $severity ) {
-		switch ( $severity ) {
-			case self::RED: return 'red';
-			case self::YELLOW: return 'yellow';
-			default: return 'unknown';
-		}
+	public static function getHumanReadableSeverity( ?int $severity ): string {
+		return match ( $severity ) {
+			self::RED => 'red',
+			self::YELLOW => 'yellow',
+			default => 'unknown',
+		};
 	}
 
 	/**
@@ -464,12 +464,12 @@ abstract class PageQualityScorer {
 	 * @param int|null $severity
 	 * @return string
 	 */
-	public static function getLocalizedSeverity( ?int $severity ) {
+	public static function getLocalizedSeverity( ?int $severity ): string {
 		$severity = self::getHumanReadableSeverity( $severity );
 		return wfMessage( "pq_severity_$severity" )->text();
 	}
 
-	protected static function removeIgnoredElements() {
+	protected static function removeIgnoredElements(): void {
 		$ignoredElements = self::getElementsByClassName( self::getDOM(), 'pagequality-ignore' );
 		foreach ( $ignoredElements as $element ) {
 			$element->parentNode->removeChild( $element );

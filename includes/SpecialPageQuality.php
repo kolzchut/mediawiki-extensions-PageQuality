@@ -1,6 +1,25 @@
 <?php
+
+namespace MediaWiki\Extension\PageQuality;
+
+use ErrorPageError;
+use ExtensionRegistry;
+use FormOptions;
+use HTMLForm;
 use MediaWiki\Extension\ArticleContentArea\ArticleContentArea;
 use MediaWiki\Extension\ArticleType\ArticleType;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Title\TitleFactory;
+use MWException;
+use OOUI\FieldsetLayout;
+use OOUI\HtmlSnippet;
+use OOUI\IndexLayout;
+use OOUI\PanelLayout;
+use OOUI\TabPanelLayout;
+use OOUI\Widget;
+use PermissionsError;
+use SpecialPage;
+use TablePager;
 use Wikimedia\Rdbms\Platform\ISQLPlatform;
 
 class SpecialPageQuality extends SpecialPage {
@@ -10,15 +29,18 @@ class SpecialPageQuality extends SpecialPage {
 	/** @var TablePager */
 	private TablePager $pager;
 
+	/** @var array */
 	private $validSubReports = [
 
 		];
 
 	/**
-	 * @inheritDoc
+	 * @param TitleFactory $titleFactory
 	 */
-	public function __construct( $name = 'PageQuality', $restriction = 'viewpagequality' ) {
-		parent::__construct( $name, $restriction );
+	public function __construct(
+		private readonly TitleFactory $titleFactory,
+	) {
+		parent::__construct( 'PageQuality', 'viewpagequality' );
 	}
 
 	/**
@@ -33,12 +55,14 @@ class SpecialPageQuality extends SpecialPage {
 		];
 		$links = [];
 		foreach ( $linkDefs as $name => $page ) {
-			$title = Title::newFromText( $page );
+			$title = $this->titleFactory->newFromText( $page );
 			$links[] = $this->getLinkRenderer()->makeLink( $title, $this->msg( $name ) );
 		}
 		$linkStr = $this->getContext()->getLanguage()->pipeList( $links );
 		$this->getOutput()->setSubtitle( $linkStr );
-		$report_type = substr( $subPage, strrpos( $subPage, '/' ) + 1 );
+		$subPage = $subPage ?? '';
+		$lastSlash = strrpos( $subPage, '/' );
+		$report_type = $lastSlash !== false ? substr( $subPage, $lastSlash + 1 ) : $subPage;
 
 		$opts = ( new FormOptions() );
 		$opts->add( 'article_content_type', '' );
@@ -55,9 +79,13 @@ class SpecialPageQuality extends SpecialPage {
 		}
 
 		if ( in_array( $report_type, [ 'declines', 'improvements' ] ) ) {
-			$this->pager = new PageQualityChangesReportPager( $this->getContext(), $this->getLinkRenderer(), $opts, $report_type );
+			$this->pager = new ScoreChangesReportPager(
+				$this->getContext(), $this->getLinkRenderer(), $opts, $report_type, $this->titleFactory
+			);
 		} else {
-			$this->pager = new PageQualityReportPager( $this->getContext(), $this->getLinkRenderer(), $opts, $report_type );
+			$this->pager = new ScoreReportPager(
+				$this->getContext(), $this->getLinkRenderer(), $opts, $report_type, $this->titleFactory
+			);
 		}
 
 		$this->subpage = $subPage;
@@ -79,12 +107,12 @@ class SpecialPageQuality extends SpecialPage {
 	 * @param string $save_link
 	 * @param array $saved_settings_values
 	 *
-	 * @return \OOUI\TabPanelLayout
+	 * @return TabPanelLayout
 	 * @throws \OOUI\Exception
 	 */
 	private function getGeneralSettingTab( string $save_link, array $saved_settings_values ) {
 		$class_type = "General";
-		foreach ( PageQualityScorer::getGeneralSettings() as $type => $data ) {
+		foreach ( Scorer::getGeneralSettings() as $type => $data ) {
 			if ( !empty( $data['dependsOnExtension'] ) &&
 				 !ExtensionRegistry::getInstance()->isLoaded( $data['dependsOnExtension'] )
 			) {
@@ -100,7 +128,8 @@ class SpecialPageQuality extends SpecialPage {
 						<label for="' . $type . '">' .
 							$this->msg( $data['name'] ) . ' ' . $this->msg( 'pq_settings_list_field_help' )->escaped() .
 						'</label>' .
-						'<textarea name="' . $type . '" class="form-control" placeholder="' . $data['default'] . '">' .
+						'<textarea name="' . $type . '" class="form-control"'
+							. ' placeholder="' . $data['default'] . '">' .
 							$value .
 						'</textarea>
 					</div>
@@ -121,15 +150,15 @@ class SpecialPageQuality extends SpecialPage {
 					' . $settings_html . '
 			</div>';
 
-		return new OOUI\TabPanelLayout( 'pq-settings-section-' . $class_type, [
+		return new TabPanelLayout( 'pq-settings-section-' . $class_type, [
 			'label' => $class_type,
-			'content' => new OOUI\FieldsetLayout( [
+			'content' => new FieldsetLayout( [
 				'classes' => [ 'mw-prefs-section-fieldset' ],
 				'id' => "pq-settings-$class_type",
 				'label' => $class_type,
 				'items' => [
-					new OOUI\Widget( [
-						'content' => new OOUI\HtmlSnippet( $tabsContent )
+					new Widget( [
+						'content' => new HtmlSnippet( $tabsContent )
 					] ),
 				],
 			] ),
@@ -144,23 +173,21 @@ class SpecialPageQuality extends SpecialPage {
 	 * @throws \OOUI\Exception
 	 */
 	protected function showSettings() {
-		global $wgScript;
-
 		if ( $this->subpage === 'settings' ) {
 			$this->mRestriction = 'configpagequality';
 			$this->checkPermissions();
 		}
 
 		$this->getOutput()->enableOOUI();
-		$this->getOutput()->setPageTitle( $this->msg( 'pq_settings_title' ) );
+		$this->getOutput()->setPageTitleMsg( $this->msg( 'pq_settings_title' ) );
 
-		$dbw = wfGetDB( DB_PRIMARY );
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
 		// @todo Save settings only if they changed ("dirty state")
 		// @todo Delete saved settings if they're reset to their default setting
 		if ( $this->getRequest()->getVal( 'save' ) == 1 ) {
-			foreach ( PageQualityScorer::getAllScorers() as $scorer_class ) {
+			foreach ( Scorer::getAllScorers() as $scorer_class ) {
 				$all_checklist = $scorer_class::getCheckList();
 				foreach ( $all_checklist as $type => $check ) {
 					$value_field = "value";
@@ -172,14 +199,14 @@ class SpecialPageQuality extends SpecialPage {
 					if ( $value ) {
 						$dbw->upsert(
 							'pq_settings',
-							[ 'setting' => $type, $value_field =>  $value ],
+							[ 'setting' => $type, $value_field => $value ],
 							'setting',
-							[ $value_field =>  $value ?? null ],
+							[ $value_field => $value ?? null ],
 						);
 					}
 				}
 			}
-			foreach ( PageQualityScorer::getGeneralSettings() as $type => $data ) {
+			foreach ( Scorer::getGeneralSettings() as $type => $data ) {
 				$savedValue = $this->getRequest()->getVal( $type );
 				if ( $savedValue !== null ) {
 					$value_field = "value";
@@ -189,9 +216,9 @@ class SpecialPageQuality extends SpecialPage {
 					$value = $this->getRequest()->getVal( $type );
 					$dbw->upsert(
 						'pq_settings',
-						[ 'setting' => $type, $value_field =>  $value ],
+						[ 'setting' => $type, $value_field => $value ],
 						'setting',
-						[ $value_field =>  $value ?? null ],
+						[ $value_field => $value ?? null ],
 					);
 				}
 			}
@@ -208,21 +235,21 @@ class SpecialPageQuality extends SpecialPage {
 				);
 				$jobs = [];
 				foreach ( $res as $row ) {
-					$jobs[] = new PageQualiyRefreshJob( Title::newFromId( $row->page_id ) );
+					$jobs[] = new RefreshJob( $this->titleFactory->newFromID( $row->page_id ) );
 				}
-				MediaWiki\MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
+				MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
 			}
 		}
 
-		$saved_settings_values = PageQualityScorer::getSettingValues();
+		$saved_settings_values = Scorer::getSettingValues();
 
 		$save_link = $this->getPageTitle( 'settings' )->getLocalURL( [ 'save' => 1 ] );
 		$tabPanels = [];
 
 		$tabPanels[] = $this->getGeneralSettingTab( $save_link, $saved_settings_values );
 
-		foreach ( PageQualityScorer::getAllScorers() as $scorer_class ) {
-			$class_type = str_replace( "PageQualityScorer", "", $scorer_class );
+		foreach ( Scorer::getAllScorers() as $scorer_class ) {
+			$class_type = substr( strrchr( $scorer_class, '\\' ), 1 );
 			$settings_html = "";
 
 			$all_checklist = $scorer_class::getCheckList();
@@ -240,7 +267,8 @@ class SpecialPageQuality extends SpecialPage {
 							<label for="' . $type . '">' . $this->msg( $data['name'] ) .
 								  ' ' . $this->msg( 'pq_settings_list_field_help' )->escaped() .
 							'</label>' .
-							'<textarea name="' . $type . '" class="form-control" placeholder="' . $data['default'] . '">'
+							'<textarea name="' . $type . '" class="form-control"'
+							. ' placeholder="' . $data['default'] . '">'
 									  . $value .
 						  '</textarea>
 						</div>
@@ -264,15 +292,15 @@ class SpecialPageQuality extends SpecialPage {
 						' . $settings_html . '
 				</div>';
 
-			$tabPanels[] = new OOUI\TabPanelLayout( 'pq-settings-section-' . $class_type, [
+			$tabPanels[] = new TabPanelLayout( 'pq-settings-section-' . $class_type, [
 				'label' => $class_type,
-				'content' => new OOUI\FieldsetLayout( [
+				'content' => new FieldsetLayout( [
 					'classes' => [ 'mw-prefs-section-fieldset' ],
 					'id' => "pq-settings-$class_type",
 					'label' => $class_type,
 					'items' => [
-						new OOUI\Widget( [
-							'content' => new OOUI\HtmlSnippet( $tabsContent )
+						new Widget( [
+							'content' => new HtmlSnippet( $tabsContent )
 						] ),
 					],
 				] ),
@@ -281,7 +309,7 @@ class SpecialPageQuality extends SpecialPage {
 			] );
 		}
 
-		$indexLayout = new OOUI\IndexLayout( [
+		$indexLayout = new IndexLayout( [
 			'infusable' => true,
 			'expanded' => false,
 			'autoFocus' => false,
@@ -289,7 +317,7 @@ class SpecialPageQuality extends SpecialPage {
 		] );
 		$indexLayout->addTabPanels( $tabPanels );
 
-		$form = new OOUI\PanelLayout( [
+		$form = new PanelLayout( [
 			'framed' => true,
 			'expanded' => false,
 			'classes' => [ 'pq-settings-tabs-wrapper' ],
@@ -322,7 +350,7 @@ class SpecialPageQuality extends SpecialPage {
 		$to_date = $this->getRequest()->getVal( 'to_date', "" );
 
 		$formDescriptor = [];
-		if ( \ExtensionRegistry::getInstance()->isLoaded( 'ArticleContentArea' ) ) {
+		if ( ExtensionRegistry::getInstance()->isLoaded( 'ArticleContentArea' ) ) {
 			$valid_content_areas = ArticleContentArea::getValidContentAreas();
 			$formDescriptor['article_content_type'] = [
 				'type' => 'select',
@@ -331,7 +359,7 @@ class SpecialPageQuality extends SpecialPage {
 				'options' => [ "" => "" ] + array_combine( $valid_content_areas, $valid_content_areas ),
 			];
 		}
-		if ( \ExtensionRegistry::getInstance()->isLoaded( 'ArticleType' ) ) {
+		if ( ExtensionRegistry::getInstance()->isLoaded( 'ArticleType' ) ) {
 			$valid_article_types = ArticleType::getValidArticleTypes();
 			$formDescriptor['article_article_type'] = [
 				'type' => 'select',
@@ -366,14 +394,14 @@ class SpecialPageQuality extends SpecialPage {
 		} elseif ( $report_type === "improvements" ) {
 			$this->getOutput()->setPageTitle( $this->msg( "improving_pages" )->escaped() );
 		} else {
-			$all_checklist = PageQualityScorer::getAllChecksList();
-			if ( !isset($all_checklist[$report_type] ) ) {
+			$all_checklist = Scorer::getAllChecksList();
+			if ( !isset( $all_checklist[$report_type] ) ) {
 				throw new ErrorPageError( 'pq_reports', 'pq_report_error_no_report' );
 			}
 			$this->getOutput()->setPageTitle(
 				$this->msg( "scorer_type_count",
-					$this->msg( $all_checklist[$report_type] )->text(),
-					PageQualityScorer::getLocalizedSeverity( $all_checklist[$report_type]['severity'] )
+					$this->msg( $all_checklist[$report_type]['name'] )->text(),
+					Scorer::getLocalizedSeverity( $all_checklist[$report_type]['severity'] )
 				)->escaped()
 			);
 		}
@@ -391,10 +419,9 @@ class SpecialPageQuality extends SpecialPage {
 
 	/**
 	 * @return void
-	 * @throws MWException
 	 */
 	private function showChangeHistoryForm() {
-		$this->getOutput()->setPageTitle( $this->msg( 'pq_page_quality_history' ) );
+		$this->getOutput()->setPageTitleMsg( $this->msg( 'pq_page_quality_history' ) );
 
 		$from = $this->getRequest()->getVal( 'from_date', null );
 		$to = $this->getRequest()->getVal( 'to_date', null );
@@ -431,7 +458,7 @@ class SpecialPageQuality extends SpecialPage {
 		$to = $this->getRequest()->getVal( 'to_date', null );
 
 		// @todo check properly if to_date <= $from_date and return an appropriate error message
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
 		$query = $this->pager->getScoreLogQuery( $from, $to );
 
@@ -449,13 +476,13 @@ class SpecialPageQuality extends SpecialPage {
 		$improvements = [];
 		$declines = [];
 		foreach ( $res as $row ) {
-			if ( $row->new_score > PageQualityScorer::getSetting( "red" ) &&
-				 $row->old_score < PageQualityScorer::getSetting( "red" )
+			if ( $row->new_score > Scorer::getSetting( "red" ) &&
+				 $row->old_score < Scorer::getSetting( "red" )
 			) {
 				$declines[$row->page_id] = 1;
 				$improvements[$row->page_id] = 0;
-			} elseif ( $row->new_score < PageQualityScorer::getSetting( "red" ) &&
-					   $row->old_score > PageQualityScorer::getSetting( "red" )
+			} elseif ( $row->new_score < Scorer::getSetting( "red" ) &&
+					   $row->old_score > Scorer::getSetting( "red" )
 			) {
 				$improvements[$row->page_id] = 1;
 				$declines[$row->page_id] = 0;
@@ -472,7 +499,7 @@ class SpecialPageQuality extends SpecialPage {
 				</th>
 			';
 		$page = 'Special:PageQuality/reports/declines';
-		$title = Title::newFromText( $page );
+		$title = $this->titleFactory->newFromText( $page );
 		$link = $this->getLinkRenderer()->makeLink(
 			$title, array_sum( $declines ), [], [ 'from_date' => $from, 'to_date' => $to ]
 		);
@@ -488,7 +515,7 @@ class SpecialPageQuality extends SpecialPage {
 			</tr>';
 
 		$page = 'Special:PageQuality/reports/improvements';
-		$title = Title::newFromText( $page );
+		$title = $this->titleFactory->newFromText( $page );
 		$link = $this->getLinkRenderer()->makeLink(
 			$title, array_sum( $improvements ), [], [ 'from_date' => $from, 'to_date' => $to ]
 		);
@@ -514,15 +541,15 @@ class SpecialPageQuality extends SpecialPage {
 	 * @return void
 	 */
 	private function showStatistics() {
-		PageQualityScorer::loadAllScoreres();
+		Scorer::loadAllScoreres();
 
-		$this->getOutput()->setPageTitle( $this->msg( 'pq_page_quality_reports_dashboard' ) );
+		$this->getOutput()->setPageTitleMsg( $this->msg( 'pq_page_quality_reports_dashboard' ) );
 
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
-		$yellowConditional = $dbr->conditional( [ 'status' => PageQualityScorer::YELLOW ], '1', 'NULL' );
-		$redConditional =  $dbr->conditional( [ 'status' => PageQualityScorer::RED ], '1', 'NULL' );
-		$greenConditional =  $dbr->conditional( [ 'status' => PageQualityScorer::GREEN ], '1', 'NULL' );
+		$yellowConditional = $dbr->conditional( [ 'status' => Scorer::YELLOW ], '1', 'NULL' );
+		$redConditional = $dbr->conditional( [ 'status' => Scorer::RED ], '1', 'NULL' );
+		$greenConditional = $dbr->conditional( [ 'status' => Scorer::GREEN ], '1', 'NULL' );
 
 		$pageCount = $dbr->selectRow(
 			"pq_score", [
@@ -564,7 +591,7 @@ class SpecialPageQuality extends SpecialPage {
 		}
 
 		$page = 'Special:PageQuality/reports/all';
-		$title = Title::newFromText( $page );
+		$title = $this->titleFactory->newFromText( $page );
 		$totalCount = $pageCount->red + $pageCount->yellow + $pageCount->green;
 		$link = $this->getLinkRenderer()->makeLink( $title, $totalCount );
 
@@ -590,7 +617,7 @@ class SpecialPageQuality extends SpecialPage {
 			</tr>';
 
 		$page = 'Special:PageQuality/reports/red_all';
-		$title = Title::newFromText( $page );
+		$title = $this->titleFactory->newFromText( $page );
 		$link = $this->getLinkRenderer()->makeLink( $title, $pageCount->red );
 
 		$html .= '
@@ -604,7 +631,7 @@ class SpecialPageQuality extends SpecialPage {
 			</tr>';
 
 		$page = 'Special:PageQuality/reports/yellow_all';
-		$title = Title::newFromText( $page );
+		$title = $this->titleFactory->newFromText( $page );
 		$link = $this->getLinkRenderer()->makeLink( $title, $pageCount->yellow );
 
 		$html .= '
@@ -632,18 +659,18 @@ class SpecialPageQuality extends SpecialPage {
 			</tr>
 		';
 
-		$all_checklist = PageQualityScorer::getAllChecksList();
+		$all_checklist = Scorer::getAllChecksList();
 		$col = array_column( $all_checklist, "severity" );
 		array_multisort( $col, SORT_DESC, $all_checklist );
 		foreach ( $all_checklist as $type => $type_data ) {
 				$page = "Special:PageQuality/reports/$type";
-				$title = Title::newFromText( $page );
+				$title = $this->titleFactory->newFromText( $page );
 				$count = array_key_exists( $type, $scorer_stats ) ? count( $scorer_stats[$type] ) : 0;
 				$link = $this->getLinkRenderer()->makeLink( $title, $count );
 				$text = $this->msg(
 					'scorer_type_count',
 					$this->msg( $type_data['name'] )->text(),
-					PageQualityScorer::getLocalizedSeverity( $type_data['severity'] )
+					Scorer::getLocalizedSeverity( $type_data['severity'] )
 				)->escaped();
 
 				$html .= '
@@ -669,8 +696,8 @@ class SpecialPageQuality extends SpecialPage {
 	 */
 	protected function showReport() {
 		$page_id = $this->getRequest()->getVal( 'page_id' );
-		$title = Title::newFromId( $page_id );
-		$this->getOutput()->setPageTitle( $this->msg( 'pq_page_quality_report_for_title', $title->getText() ) );
+		$title = $this->titleFactory->newFromID( $page_id );
+		$this->getOutput()->setPageTitleMsg( $this->msg( 'pq_page_quality_report_for_title', $title->getText() ) );
 		$this->getOutput()->addHTML( self::getPageQualityReportHtml( $page_id ) );
 	}
 
@@ -682,8 +709,8 @@ class SpecialPageQuality extends SpecialPage {
 	 * @return string
 	 */
 	public static function getPageQualityReportHtml( int $page_id ): string {
-		PageQualityScorer::loadAllScoreres();
-		$dbr = wfGetDB( DB_REPLICA );
+		Scorer::loadAllScoreres();
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
 		$res = $dbr->select(
 			"pq_issues",
@@ -701,9 +728,9 @@ class SpecialPageQuality extends SpecialPage {
 			];
 		}
 
-		$saved_settings_values = PageQualityScorer::getSettingValues();
+		$saved_settings_values = Scorer::getSettingValues();
 		$all_checklist = [];
-		foreach ( PageQualityScorer::getAllScorers() as $scorer_class ) {
+		foreach ( Scorer::getAllScorers() as $scorer_class ) {
 			$all_checklist += $scorer_class::getCheckList();
 		}
 
@@ -725,15 +752,18 @@ class SpecialPageQuality extends SpecialPage {
 					$message = wfMessage( "page_scorer_inexistence" );
 				}
 
-				$panelTypeBySeverity = ( $all_checklist[$type]['severity'] === PageQualityScorer::RED ) ?
+				$panelTypeBySeverity = ( $all_checklist[$type]['severity'] === Scorer::RED ) ?
 					'panel-danger' : 'panel-warning';
 
 				$html .= '
 					<div class="panel ' . $panelTypeBySeverity . '">
 					<div class="panel-heading">
 						<span class="badge" data-raofz="15">' . count( $score_responses ) . '</span>&nbsp;
-						<span class="sr-only">' . wfMessage( 'pq_num_issues' )->numParams( count( $score_responses ) ) . ' </span>
-						<span>' . wfMessage( PageQualityScorer::getAllChecksList()[$type]['name'] )->escaped() . ' - ' . $message . '</span>
+						<span class="sr-only">'
+							. wfMessage( 'pq_num_issues' )->numParams( count( $score_responses ) ) . ' </span>
+						<span>'
+							. wfMessage( Scorer::getAllChecksList()[$type]['name'] )->escaped()
+							. ' - ' . $message . '</span>
 					</div>
 				';
 				$html .= '
@@ -756,9 +786,12 @@ class SpecialPageQuality extends SpecialPage {
 		return $html;
 	}
 
-	static function getQueryForAllPages() {
-		$dbr = wfGetDB( DB_REPLICA );
-		$allowedNamespaces = \MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
+	/**
+	 * @return array
+	 */
+	public static function getQueryForAllPages(): array {
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
+		$allowedNamespaces = MediaWikiServices::getInstance()->getMainConfig()->get( 'PageQualityNamespaces' );
 		$namespacesList = $dbr->makeList( $allowedNamespaces );
 
 		$query = [
@@ -769,7 +802,7 @@ class SpecialPageQuality extends SpecialPage {
 				"page_namespace IN ($namespacesList)"
 			]
 		];
-		$relevantArticleTypes = PageQualityScorer::getSetting( 'article_types' );
+		$relevantArticleTypes = Scorer::getSetting( 'article_types' );
 		if ( !empty( $relevantArticleTypes ) && ExtensionRegistry::getInstance()->isLoaded( 'ArticleType' ) ) {
 			$articleTypeQuery = ArticleType::getJoin( $relevantArticleTypes );
 			$query = array_merge_recursive( $query, $articleTypeQuery );

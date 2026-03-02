@@ -1,6 +1,24 @@
 <?php
 
-class PageQualityApi extends ApiBase {
+namespace MediaWiki\Extension\PageQuality;
+
+use ApiBase;
+use ApiResult;
+use MediaWiki\Title\TitleFactory;
+
+class Api extends ApiBase {
+
+	/**
+	 * @param \ApiMain $main
+	 * @param string $action
+	 * @param TitleFactory $titleFactory
+	 */
+	public function __construct(
+		$main, $action,
+		private readonly TitleFactory $titleFactory,
+	) {
+		parent::__construct( $main, $action );
+	}
 
 	/**
 	 * @param string $code
@@ -30,7 +48,7 @@ class PageQualityApi extends ApiBase {
 
 		if ( $this->getMain()->getVal( 'pq_action' ) == "fetch_report_html" ) {
 			$page_id = $this->getMain()->getVal( 'page_id' );
-			$title = Title::newFromId( $page_id );
+			$title = $this->titleFactory->newFromID( $page_id );
 			$html = SpecialPageQuality::getPageQualityReportHtml( $page_id );
 
 			$this->addResultValues( "title",

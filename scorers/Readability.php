@@ -1,62 +1,69 @@
 <?php
 
-class PageQualityScorerReadability extends PageQualityScorer {
+namespace MediaWiki\Extension\PageQuality\Scorer;
+
+use DOMDocument;
+use DOMElement;
+use DOMNode;
+use MediaWiki\Extension\PageQuality\Scorer as BaseScorer;
+
+class Readability extends BaseScorer {
 
 	/**
-	 * @inheritdoc
+	 * @inheritDoc
 	 */
-	public static $checksList = [
+	public static array $checksList = [
 		"blocked_expressions" => [
 			"name" => "pag_scorer_stop_words",
 			"description" => "pag_scorer_stop_words_desc",
 			"check_type" => "do_not_exist",
 			"data_type" => "list",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => ""
 		],
 		"para_length" => [
 			"name" => "pag_scorer_para_len",
 			"description" => "pag_scorer_para_len_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 40
 		],
 		"para_length_max" => [
 			"name" => "pag_scorer_para_len_max",
 			"description" => "pag_scorer_para_len_max_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::RED,
+			"severity" => BaseScorer::RED,
 			"default" => 60
 		],
 		"sentence_length" => [
 			"name" => "pag_scorer_sentence_len",
 			"description" => "pag_scorer_sentence_len_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 			"default" => 15
 		],
 		"sentence_length_max" => [
 			"name" => "pag_scorer_sentence_len_max",
 			"description" => "pag_scorer_sentence_len_max_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::RED,
+			"severity" => BaseScorer::RED,
 			"default" => 30
 		],
 		"list_items_per_level_max" => [
 			"name" => "pag_scorer_list_items_per_level_max",
 			"description" => "pag_scorer_list_items_per_level_max_desc",
 			"check_type" => "max",
-			"severity" => PageQualityScorer::RED,
+			"severity" => BaseScorer::RED,
 			"default" => 10
 		],
 	];
 	/** @var array */
-	public $response = [];
+	public array $response = [];
 
 	/**
 	 * @inheritDoc
 	 */
-	public function calculatePageScore() {
+	public function calculatePageScore(): ?array {
 		$blocked_expressions = self::getSetting( "blocked_expressions" );
 		if ( !empty( $blocked_expressions ) ) {
 			foreach ( $blocked_expressions as $blocked_expression ) {
@@ -64,17 +71,19 @@ class PageQualityScorerReadability extends PageQualityScorer {
 					continue;
 				}
 				$offset = 0;
-				while ( ( $offset = strpos( strip_tags( self::getText() ), $blocked_expression, $offset ) ) !== false ) {
+				$plainText = strip_tags( self::getText() );
+				$offset = strpos( $plainText, $blocked_expression, $offset );
+				while ( $offset !== false ) {
 					$cut_off_start_offset = max( 0, $offset - 30 );
-					if ( strpos( strip_tags( self::getText() ), " ", $cut_off_start_offset ) !== false ) {
-						$cut_off_start_offset = strpos( strip_tags( self::getText() ), " ", $cut_off_start_offset );
+					if ( strpos( $plainText, " ", $cut_off_start_offset ) !== false ) {
+						$cut_off_start_offset = strpos( $plainText, " ", $cut_off_start_offset );
 					}
 
 					$this->response[ 'blocked_expressions' ][] = [
 						"score" => self::getCheckList()[ 'blocked_expressions' ][ 'severity' ],
 						"example" => substr_replace(
 							substr(
-								strip_tags( self::getText() ),
+								$plainText,
 								$cut_off_start_offset,
 								$cut_off_start_offset + strlen( $blocked_expression ) + 30
 							),
@@ -83,7 +92,7 @@ class PageQualityScorerReadability extends PageQualityScorer {
 							strlen( $blocked_expression )
 						)
 					];
-					$offset += strlen( $blocked_expression );
+					$offset = strpos( $plainText, $blocked_expression, $offset + strlen( $blocked_expression ) );
 				}
 			}
 		}
@@ -113,12 +122,12 @@ class PageQualityScorerReadability extends PageQualityScorer {
 	 *
 	 * @return void
 	 */
-	public function recurseDomNodes( $pNode ) {
-		if ( !$pNode instanceof DOMText && ( $pNode->tagName == "ul" || $pNode->tagName == "ol" ) ) {
+	public function recurseDomNodes( DOMNode $pNode ): void {
+		if ( $pNode instanceof DOMElement && ( $pNode->tagName == "ul" || $pNode->tagName == "ol" ) ) {
 			if ( $pNode->hasChildNodes() ) {
 				$count_of_li = 0;
 				foreach ( $pNode->childNodes as $childNode ) {
-					if ( !$childNode instanceof DOMText && $childNode->tagName == "li" ) {
+					if ( $childNode instanceof DOMElement && $childNode->tagName == "li" ) {
 						$count_of_li++;
 					}
 				}
@@ -142,7 +151,8 @@ class PageQualityScorerReadability extends PageQualityScorer {
 			if ( empty( trim( $pNode->nodeValue ) ) ) {
 				return;
 			}
-			if ( stripos( $pNode->parentNode->getAttribute( 'class' ), "emphasis-item-text" ) === false ) {
+			if ( $pNode->parentNode instanceof DOMElement &&
+				stripos( $pNode->parentNode->getAttribute( 'class' ), "emphasis-item-text" ) === false ) {
 				$this->evaluateParagraphs( $pNode->nodeValue );
 			}
 		}
@@ -153,7 +163,7 @@ class PageQualityScorerReadability extends PageQualityScorer {
 	 *
 	 * @return void
 	 */
-	public function evaluateParagraphs( string $str ) {
+	public function evaluateParagraphs( string $str ): void {
 		$sentences = preg_split( '/(?<=[.?!])\s+(?=\w)/iu', $str );
 		foreach ( $sentences as $sentence ) {
 			$wc = self::str_word_count_utf8( $sentence );

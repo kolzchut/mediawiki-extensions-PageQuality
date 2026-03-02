@@ -1,33 +1,38 @@
 <?php
 
-class PageQualityScorerCalloutsRules extends PageQualityScorer {
+namespace MediaWiki\Extension\PageQuality\Scorer;
 
-	/** @inheritdoc */
-	public static $checksList = [
+use DOMElement;
+use MediaWiki\Extension\PageQuality\Scorer as BaseScorer;
+
+class CalloutsRules extends BaseScorer {
+
+	/** @inheritDoc */
+	public static array $checksList = [
 		"callout_gaps" => [
 			"name" => "pag_scorer_callout_gaps",
 			"description" => "callout_gaps_desc",
 			"check_type" => "do_not_exist",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 		],
 		"callout_section_begin" => [
 			"name" => "pag_scorer_callout_section_begin",
 			"description" => "callout_section_begin_desc",
 			"check_type" => "do_not_exist",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 		],
 		"callout_number" => [
 			"name" => "pag_scorer_callout_number",
 			"description" => "callout_number_desc",
 			"check_type" => "exist",
-			"severity" => PageQualityScorer::YELLOW,
+			"severity" => BaseScorer::YELLOW,
 		],
 	];
 
 	/**
 	 * @inheritDoc
 	 */
-	public function calculatePageScore() {
+	public function calculatePageScore(): ?array {
 		$response = [];
 
 		$count = 0;
@@ -42,7 +47,7 @@ class PageQualityScorerCalloutsRules extends PageQualityScorer {
 			) {
 				$count++;
 				$previousNode = $divNodes->item( $i )->previousSibling;
-				while ( $previousNode instanceof DOMText ) {
+				while ( $previousNode !== null && !( $previousNode instanceof DOMElement ) ) {
 					$previousNode = $previousNode->previousSibling;
 				}
 

@@ -3,7 +3,7 @@ namespace MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate;
 
 use BatchRowIterator;
 use LoggedUpdateMaintenance;
-use PageQualityScorer;
+use MediaWiki\Extension\PageQuality\Scorer;
 
 /**
  * This script add the status information to old log records
@@ -41,6 +41,7 @@ $maintClass = fixScoreLogAfterAddingStatus::class;
 /**
  * Run automatically with update.php, once
  */
+// phpcs:ignore Squiz.Classes.ValidClassName.NotCamelCaps
 class fixScoreLogAfterAddingStatus extends LoggedUpdateMaintenance {
 
 	/**
@@ -77,13 +78,17 @@ class fixScoreLogAfterAddingStatus extends LoggedUpdateMaintenance {
 		return true;
 	}
 
+	/**
+	 * @param int $score
+	 * @return int
+	 */
 	protected function getStatusFromScoreOldAlgorithm( $score ) {
-		$status = PageQualityScorer::GREEN;
+		$status = Scorer::GREEN;
 		if ( $score > 0 ) {
-			$status = PageQualityScorer::YELLOW;
+			$status = Scorer::YELLOW;
 		}
-		if ( $score > PageQualityScorer::getSetting( "red" ) ) {
-			$status = PageQualityScorer::RED;
+		if ( $score > Scorer::getSetting( "red" ) ) {
+			$status = Scorer::RED;
 		}
 
 		return $status;

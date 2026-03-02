@@ -49,7 +49,6 @@
 	max-width: 18em;
 	background-color: #fff;
 
-
 	& > header {
 		padding: 10px;
 	}
@@ -106,19 +105,18 @@
 	}
 }
 
-
 .panel {
 	margin-bottom: @line-height-computed;
 	background-color: @panel-bg;
 	border: 1px solid transparent;
 	border-radius: @panel-border-radius;
-	.box-shadow(0 1px 1px rgba(0, 0, 0, .05));
+	box-shadow: 0 1px 1px rgba( 0, 0, 0, 0.05 );
 }
 
 // Panel contents
 .panel-body {
 	padding: @panel-body-padding;
-	&:extend(.clearfix all);
+	&:extend( .clearfix all );
 }
 
 .border-top-radius(@radius) {
@@ -140,7 +138,7 @@
 .panel-title {
 	margin-top: 0;
 	margin-bottom: 0;
-	font-size: ceil((@font-size-base * 1.125));
+	font-size: ceil( (@font-size-base * 1.125) );
 	color: inherit;
 
 	> a,
@@ -188,6 +186,7 @@
 			}
 		}
 	}
+
 	> .panel-heading + .panel-collapse > .list-group {
 		.list-group-item:first-child {
 			.border-top-radius(0);
@@ -200,6 +199,7 @@
 		border-top-width: 0;
 	}
 }
+
 .list-group + .panel-footer {
 	border-top-width: 0;
 }
@@ -226,11 +226,11 @@
 	}
 }
 
-
 // Contextual variations
 .panel-warning {
 	.panel-variant(@panel-warning-border; @panel-warning-text; @panel-warning-heading-bg; @panel-warning-border);
 }
+
 .panel-danger {
 	.panel-variant(@panel-danger-border; @panel-danger-text; @panel-danger-heading-bg; @panel-danger-border);
 }
@@ -246,11 +246,13 @@
 		+ .panel-collapse > .panel-body {
 			border-top-color: @border;
 		}
+
 		.badge {
 			color: @heading-bg-color;
 			background-color: @heading-text-color;
 		}
 	}
+
 	& > .panel-footer {
 		+ .panel-collapse > .panel-body {
 			border-bottom-color: @border;
@@ -263,7 +265,6 @@
 	padding-left: 0; // reset padding because ul and ol
 	margin-bottom: 20px;
 }
-
 
 // Individual list items
 //
@@ -282,12 +283,12 @@
 	&:first-child {
 		.border-top-radius(@list-group-border-radius);
 	}
+
 	&:last-child {
 		margin-bottom: 0;
 		.border-bottom-radius(@list-group-border-radius);
 	}
 }
-
 
 // Custom content options
 //
@@ -297,6 +298,7 @@
 	margin-top: 0;
 	margin-bottom: 5px;
 }
+
 .list-group-item-text {
 	margin-bottom: 0;
 	line-height: 1.3;

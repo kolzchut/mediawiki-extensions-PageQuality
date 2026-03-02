@@ -19,7 +19,7 @@ which may cause issues with skins that use Bootstrap.
 Elements with the CSS class `.pagequality-ignore` will be excluded from the audits. 
 
 ## Settings
-- `wgPageQualityNamespaces` is an array of namespaces where the extension will work. The default `[ NS_MAIN ]`.
+- `$wgPageQualityNamespaces` is an array of namespaces where the extension will work. The default is `[ NS_MAIN ]`.
 
 ## Permissions
 - "viewpagequality" is required to watch the list of issues and use the API.
@@ -29,17 +29,31 @@ Elements with the CSS class `.pagequality-ignore` will be excluded from the audi
 - The extension also defines the group "pagequality-admin", with the "configpagequality" permission.
 
 ## Todo
+- Add PHPUnit tests
 - The option to limit by dates in the main report makes no sense currently, as it also shows scores per scorer, which
   aren't saved to the log. The following should probably be done:
   - Remove the individual scorers from the table [done]
   - Allow viewing the individual scores for a specific page when clicking a link in the table
 - The current "limit by dates" doesn't even work. It's definitely not correctly selecting the oldest and newest log entries.
-- Lint the code
+- ~~Lint the code~~ (done)
 - Scope styles imported from Bootstrap or replace them with MediaWiki's native elements
 - Perhaps: Make the issues' sidebar look and behave like Google Docs' "Version history" drawer
 
-## Changlog
-1.0.0a:
+## Changelog
+1.0.2:
+- Removed redundant `PageQuality` prefix from class names now covered by the namespace
+  (e.g. `PageQualityScorer` → `Scorer`, `PageQualityScorerCalloutsRules` → `Scorer\CalloutsRules`)
+- Fixed typo in `RefreshJob` class name (was `PageQualiyRefreshJob`)
+- Fixed `DOMDocument` namespace resolution in `Scorer`
+- Added missing qqq.json documentation for 12 i18n messages
+- Fixed LESS `box-shadow` mixin call to standard CSS property
+
+1.0.1:
+- Modernised to current MediaWiki standards: `AutoloadNamespaces`, service-injected hook handlers,
+  hook interfaces, `TitleFactory` instead of `Title::newFromText()`, `getConnectionProvider()` instead of `wfGetDB()`
+- Updated dev dependencies to current BoilerPlate versions
+
+
 - "Red" pages are now only those that have a red-level issue *and also* a minimum score.
 - It is highly recommended to empty all the extension's tables prior to upgrading, as the compatibility with the older schema is wonky.
 - The individual scorer results were removed from the reports table
