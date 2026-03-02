@@ -118,4 +118,3 @@ abstract class BaseReportPager extends TablePager {
 		return '';
 	}
 }
-

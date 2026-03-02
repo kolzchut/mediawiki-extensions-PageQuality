@@ -160,4 +160,3 @@ class ScoreReportPager extends BaseReportPager {
 		return ( $field === 'score' );
 	}
 }
-

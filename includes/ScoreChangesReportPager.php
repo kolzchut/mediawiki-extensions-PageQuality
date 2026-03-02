@@ -25,7 +25,7 @@ class ScoreChangesReportPager extends BaseReportPager {
 	 * @param IContextSource $context
 	 * @param LinkRenderer $linkRenderer
 	 * @param FormOptions $opts
-	 * @param string $report_type  Must be 'declines' or 'improvements'.
+	 * @param string $report_type Must be 'declines' or 'improvements'.
 	 * @param TitleFactory $titleFactory
 	 * @throws ErrorPageError
 	 */
@@ -127,4 +127,3 @@ class ScoreChangesReportPager extends BaseReportPager {
 		return ( $field === 'score' );
 	}
 }
-

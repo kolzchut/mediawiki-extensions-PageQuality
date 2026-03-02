@@ -95,7 +95,7 @@ abstract class Scorer {
 		if ( !empty( static::$registered_classes ) ) {
 			return;
 		}
-		foreach ( glob( __DIR__ . "/../scorers/*.php" ) as $filename ) {
+		foreach ( glob( __DIR__ . "/Scorer/*.php" ) as $filename ) {
 			include_once $filename;
 			self::$registered_classes[] = __NAMESPACE__ . '\\Scorer\\' . basename( $filename, '.php' );
 		}
