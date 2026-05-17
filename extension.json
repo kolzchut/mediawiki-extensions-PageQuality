@@ -55,10 +55,13 @@
 		"main": {
 			"class": "MediaWiki\\Extension\\PageQuality\\Hooks",
 			"services": [ "PermissionManager" ]
+		},
+		"installer": {
+			"class": "MediaWiki\\Extension\\PageQuality\\InstallerHooks"
 		}
 	},
 	"Hooks": {
-		"LoadExtensionSchemaUpdates": "main",
+		"LoadExtensionSchemaUpdates": "installer",
 		"BeforePageDisplay": "main",
 		"PageSaveComplete": "main"
 	},
