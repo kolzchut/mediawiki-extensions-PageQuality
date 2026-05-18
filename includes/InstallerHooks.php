@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension\PageQuality;
 
+use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\fixScoreLogAfterAddingStatus;
 use MediaWiki\Installer\Hook\LoadExtensionSchemaUpdatesHook;
 
 /**
