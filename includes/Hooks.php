@@ -2,11 +2,14 @@
 
 namespace MediaWiki\Extension\PageQuality;
 
-use MediaWiki\Hook\BeforePageDisplayHook;
+use MediaWiki\Output\Hook\BeforePageDisplayHook;
 use MediaWiki\Html\Html;
 use MediaWiki\Output\OutputPage;
 use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Storage\EditResult;
 use MediaWiki\Storage\Hook\PageSaveCompleteHook;
+use MediaWiki\User\UserIdentity;
 use Skin;
 use WikiPage;
 
@@ -19,11 +22,11 @@ class Hooks implements BeforePageDisplayHook, PageSaveCompleteHook {
 
 	/**
 	 * @param WikiPage $wikiPage
-	 * @param \MediaWiki\User\UserIdentity $user
+	 * @param UserIdentity $user
 	 * @param string $summary
 	 * @param int $flags
-	 * @param \MediaWiki\Revision\RevisionRecord $revisionRecord
-	 * @param \MediaWiki\Storage\EditResult $editResult
+	 * @param RevisionRecord $revisionRecord
+	 * @param EditResult $editResult
 	 *
 	 * @return void
 	 */
