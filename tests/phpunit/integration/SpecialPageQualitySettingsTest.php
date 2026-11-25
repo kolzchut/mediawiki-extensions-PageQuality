@@ -8,6 +8,7 @@ use MediaWiki\Context\RequestContext;
 use MediaWiki\Extension\PageQuality\Scorer;
 use MediaWiki\Extension\PageQuality\SpecialPageQuality;
 use MediaWiki\Request\FauxRequest;
+use MediaWiki\Session\CsrfTokenSet;
 use MediaWiki\User\User;
 use SpecialPageTestBase;
 
@@ -44,16 +45,32 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	}
 
 	/**
+	 * A settings request in a session logged in as $user, so that the token the
+	 * page expects is that user's registered token and not the logged-out one.
+	 *
+	 * @param User $user
 	 * @param array $data
 	 * @param bool $posted
 	 * @return FauxRequest
 	 */
-	private function newRequest( array $data, bool $posted ): FauxRequest {
+	private function newRequest( User $user, array $data, bool $posted ): FauxRequest {
+		$session = RequestContext::getMain()->getRequest()->getSession();
+		$session->setUser( $user );
 		return new FauxRequest(
 			$data + [ 'save' => '1', 'red' => self::INPUT_VALUE ],
 			$posted,
-			RequestContext::getMain()->getRequest()->getSession()
+			$session
 		);
+	}
+
+	/**
+	 * @param FauxRequest $request
+	 * @return string The valid edit token for the request's session
+	 */
+	private function getValidToken( FauxRequest $request ): string {
+		$token = ( new CsrfTokenSet( $request ) )->getToken()->toString();
+		$this->assertNotSame( '+\\', $token, 'The session should belong to a registered user' );
+		return $token;
 	}
 
 	/**
@@ -70,9 +87,10 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	}
 
 	public function testGetChangesNothing() {
-		// Even with the admin's own token, a GET must not save
+		// Even with a valid token, a GET must not save
 		$admin = $this->getAdmin();
-		$request = $this->newRequest( [ 'wpEditToken' => $admin->getEditToken() ], false );
+		$request = $this->newRequest( $admin, [], false );
+		$request->setVal( 'wpEditToken', $this->getValidToken( $request ) );
 
 		$this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
 
@@ -90,20 +108,31 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	 * @dataProvider provideBadTokens
 	 */
 	public function testPostWithoutValidTokenIsRefused( string $token ) {
-		$request = $this->newRequest( [ 'wpEditToken' => $token ], true );
+		$admin = $this->getAdmin();
+		$request = $this->newRequest( $admin, [ 'wpEditToken' => $token ], true );
 
-		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $this->getAdmin() );
+		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
 
 		$this->assertSame( [], $this->getStoredValues( 'red' ) );
 		$this->assertStringContainsString( '(sessionfailure)', $html );
+
+		// Control: the same request with the right token does save, so the refusal
+		// above came from comparing the token
+		$request = $this->newRequest( $admin, [], true );
+		$request->setVal( 'wpEditToken', $this->getValidToken( $request ) );
+
+		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
+
+		$this->assertContains( self::INPUT_VALUE, $this->getStoredValues( 'red' ) );
+		$this->assertStringNotContainsString( '(sessionfailure)', $html );
 	}
 
 	public function testPostWithTokenSavesAndPrintsValuesEscaped() {
-		// No wpEditToken: SpecialPageExecutor supplies the performer's own token
-		// when a posted request has none
-		$request = $this->newRequest( [ 'blocked_expressions' => self::TEXTAREA_VALUE ], true );
+		$admin = $this->getAdmin();
+		$request = $this->newRequest( $admin, [ 'blocked_expressions' => self::TEXTAREA_VALUE ], true );
+		$request->setVal( 'wpEditToken', $this->getValidToken( $request ) );
 
-		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $this->getAdmin() );
+		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
 
 		$this->assertContains( self::INPUT_VALUE, $this->getStoredValues( 'red' ) );
 		$this->assertStringNotContainsString( '(sessionfailure)', $html );

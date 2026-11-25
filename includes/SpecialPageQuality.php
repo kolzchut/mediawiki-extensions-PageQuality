@@ -10,6 +10,7 @@ use MediaWiki\Extension\ArticleContentArea\ArticleContentArea;
 use MediaWiki\Extension\ArticleType\ArticleType;
 use MediaWiki\Html\Html;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Session\CsrfTokenSet;
 use MediaWiki\Title\TitleFactory;
 use MWException;
 use OOUI\FieldsetLayout;
@@ -166,7 +167,7 @@ class SpecialPageQuality extends SpecialPage {
 		// or a POST without a valid token, changes nothing.
 		$request = $this->getRequest();
 		if ( $request->wasPosted() && $request->getCheck( 'save' ) ) {
-			if ( $this->getContext()->getCsrfTokenSet()->matchTokenField( 'wpEditToken' ) ) {
+			if ( $this->getTokenSet()->matchTokenField( 'wpEditToken' ) ) {
 				$this->saveSettings();
 			} else {
 				$this->getOutput()->addHTML( Html::errorBox( $this->msg( 'sessionfailure' )->parse() ) );
@@ -240,7 +241,7 @@ class SpecialPageQuality extends SpecialPage {
 		<form action="' . htmlspecialchars( $save_link ) . '" method="post">
 			' . $form . '
 				' . Html::hidden( 'save', '1' ) . '
-				' . Html::hidden( 'wpEditToken', $this->getContext()->getCsrfTokenSet()->getToken()->toString() ) . '
+				' . Html::hidden( 'wpEditToken', $this->getTokenSet()->getToken()->toString() ) . '
 				<input type="checkbox" id="regenerate_scores" name="regenerate_scores" value="yes">
 				<label for="regenerate_scores"> ' . $this->msg( "regenerate_scores_checkbox" ) . '</label><br>
 				<button type="submit" class="btn btn-primary">' .
@@ -251,6 +252,17 @@ class SpecialPageQuality extends SpecialPage {
 
 		$this->getOutput()->addHTML( $html );
 		$this->getOutput()->addModules( 'ext.page_quality.special' );
+	}
+
+	/**
+	 * Tokens for this page's own request. Not getContext()->getCsrfTokenSet(): a
+	 * DerivativeContext does not override that method, so it would read the main
+	 * request, which may not be the one this page was given.
+	 *
+	 * @return CsrfTokenSet
+	 */
+	private function getTokenSet(): CsrfTokenSet {
+		return new CsrfTokenSet( $this->getRequest() );
 	}
 
 	/**
