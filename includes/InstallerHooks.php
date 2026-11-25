@@ -3,6 +3,7 @@
 namespace MediaWiki\Extension\PageQuality;
 
 use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\fixScoreLogAfterAddingStatus;
+use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\RegenerateIssueExamples;
 use MediaWiki\Installer\Hook\LoadExtensionSchemaUpdatesHook;
 
 /**
@@ -12,6 +13,7 @@ use MediaWiki\Installer\Hook\LoadExtensionSchemaUpdatesHook;
  * such hooks since ~MW 1.41.
  */
 class InstallerHooks implements LoadExtensionSchemaUpdatesHook {
+	/** @inheritDoc */
 	public function onLoadExtensionSchemaUpdates( $updater ): void {
 		$dir = __DIR__ . '/../sql';
 
@@ -39,6 +41,14 @@ class InstallerHooks implements LoadExtensionSchemaUpdatesHook {
 			'runMaintenance',
 			fixScoreLogAfterAddingStatus::class,
 			"$dir/../maintenance/PostDatabaseUpdate/fixScoreLogAfterAddingStatus.php"
+		] );
+
+		// Rescore every page once, so that no issue example stored before examples
+		// were escaped is left in pq_issues
+		$updater->addExtensionUpdate( [
+			'runMaintenance',
+			RegenerateIssueExamples::class,
+			"$dir/../maintenance/PostDatabaseUpdate/regenerateIssueExamples.php"
 		] );
 	}
 }

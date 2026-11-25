@@ -58,12 +58,12 @@ class EmphasisRules extends BaseScorer {
 				if ( $wc > self::getSetting( "emphasis_line_length" ) ) {
 					$response['emphasis_line_length'][] = [
 						"score" => self::getCheckList()['emphasis_line_length']['severity'],
-						"example" => mb_substr( $divNodes->item( $i )->nodeValue, 0, 50 )
+						"example" => self::makeTextExample( $divNodes->item( $i )->nodeValue, 50 )
 					];
 				} elseif ( $wc > self::getSetting( "emphasis_line_length_min" ) ) {
 					$response['emphasis_line_length_min'][] = [
 						"score" => self::getCheckList()['emphasis_line_length_min']['severity'],
-						"example" => mb_substr( $divNodes->item( $i )->nodeValue, 0, 50 )
+						"example" => self::makeTextExample( $divNodes->item( $i )->nodeValue, 50 )
 					];
 				}
 			}
@@ -72,13 +72,13 @@ class EmphasisRules extends BaseScorer {
 		if ( $count < self::getSetting( "emphasis_lines_min" ) ) {
 			$response['emphasis_lines_min'][] = [
 				"score" => self::getCheckList()['emphasis_lines_min']['severity'],
-				"example" => wfMessage( "pq_occurance_emphasis_lines", $count )
+				"example" => wfMessage( "pq_occurance_emphasis_lines", $count )->escaped()
 			];
 		}
 		if ( $count > self::getSetting( "emphasis_lines_num" ) ) {
 			$response['emphasis_lines_num'][] = [
 				"score" => self::getCheckList()['emphasis_lines_num']['severity'],
-				"example" => wfMessage( "pq_occurance_emphasis_lines", $count )
+				"example" => wfMessage( "pq_occurance_emphasis_lines", $count )->escaped()
 			];
 		}
 		return $response;
