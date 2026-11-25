@@ -51,8 +51,10 @@ class CalloutsRules extends BaseScorer {
 					$previousNode = $previousNode->previousSibling;
 				}
 
+				// A callout with nothing before it follows neither a heading nor
+				// another callout; the callouts after it still need checking
 				if ( !$previousNode ) {
-					return $response;
+					continue;
 				}
 
 				if ( in_array( $previousNode->tagName, [ "h1", "h2", "h3", "h4" ] ) ) {
