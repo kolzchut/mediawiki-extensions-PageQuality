@@ -8,7 +8,6 @@ use MediaWiki\Context\RequestContext;
 use MediaWiki\Extension\PageQuality\Scorer;
 use MediaWiki\Extension\PageQuality\SpecialPageQuality;
 use MediaWiki\Request\FauxRequest;
-use MediaWiki\Session\CsrfTokenSet;
 use MediaWiki\User\User;
 use SpecialPageTestBase;
 
@@ -28,7 +27,10 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->setGroupPermissions( 'pagequality-admin', 'configpagequality', true );
+		// The wiki may withhold viewpagequality from '*', and the page needs both rights
+		$this->setGroupPermissions( [
+			'pagequality-admin' => [ 'viewpagequality' => true, 'configpagequality' => true ],
+		] );
 		Scorer::clearSettingsCache();
 	}
 
@@ -68,10 +70,11 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	}
 
 	public function testGetChangesNothing() {
-		$request = $this->newRequest( [], false );
-		$request->setVal( 'wpEditToken', ( new CsrfTokenSet( $request ) )->getToken()->toString() );
+		// Even with the admin's own token, a GET must not save
+		$admin = $this->getAdmin();
+		$request = $this->newRequest( [ 'wpEditToken' => $admin->getEditToken() ], false );
 
-		$this->executeSpecialPage( 'settings', $request, 'qqx', $this->getAdmin() );
+		$this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
 
 		$this->assertSame( [], $this->getStoredValues( 'red' ) );
 	}
@@ -96,8 +99,9 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	}
 
 	public function testPostWithTokenSavesAndPrintsValuesEscaped() {
+		// No wpEditToken: SpecialPageExecutor supplies the performer's own token
+		// when a posted request has none
 		$request = $this->newRequest( [ 'blocked_expressions' => self::TEXTAREA_VALUE ], true );
-		$request->setVal( 'wpEditToken', ( new CsrfTokenSet( $request ) )->getToken()->toString() );
 
 		[ $html ] = $this->executeSpecialPage( 'settings', $request, 'qqx', $this->getAdmin() );
 
@@ -109,12 +113,15 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 	}
 
 	public function testStoredValuesArePrintedAsText() {
+		// Separate inserts: a multi-row insert needs the same columns in every row
 		$this->getDb()->newInsertQueryBuilder()
 			->insertInto( 'pq_settings' )
-			->rows( [
-				[ 'setting' => 'red', 'value' => self::INPUT_VALUE ],
-				[ 'setting' => 'blocked_expressions', 'value_blob' => self::TEXTAREA_VALUE ],
-			] )
+			->row( [ 'setting' => 'red', 'value' => self::INPUT_VALUE ] )
+			->caller( __METHOD__ )
+			->execute();
+		$this->getDb()->newInsertQueryBuilder()
+			->insertInto( 'pq_settings' )
+			->row( [ 'setting' => 'blocked_expressions', 'value_blob' => self::TEXTAREA_VALUE ] )
 			->caller( __METHOD__ )
 			->execute();
 		Scorer::clearSettingsCache();
