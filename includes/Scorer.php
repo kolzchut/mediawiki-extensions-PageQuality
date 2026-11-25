@@ -15,6 +15,12 @@ abstract class Scorer {
 	public const YELLOW = 1;
 	public const RED = 2;
 
+	/**
+	 * Width of the pq_issues.example column, in characters. An example longer
+	 * than this is cut by the database, which could split an HTML entity.
+	 */
+	public const EXAMPLE_MAX_LENGTH = 100;
+
 	/** @var array */
 	protected static array $registered_classes = [];
 	/** @var array */
@@ -71,6 +77,43 @@ abstract class Scorer {
 		$text = trim( $text );
 
 		return count( explode( " ", $text ) );
+	}
+
+	/**
+	 * Turn text taken from the page into an example that is safe to store and
+	 * to print as HTML in the quality report. The text comes from the DOM
+	 * (textContent / nodeValue), which has already decoded the parser's
+	 * entities, so it must be escaped again here.
+	 *
+	 * @param string $text Plain text, not HTML
+	 * @param int $maxLength Maximum number of characters of text to keep
+	 * @return string HTML
+	 */
+	public static function makeTextExample( string $text, int $maxLength = self::EXAMPLE_MAX_LENGTH ): string {
+		$text = mb_substr( $text, 0, $maxLength );
+		$escaped = self::escapeExampleText( $text );
+		// Escaping can make the example longer than the column. Shorten the text,
+		// not the escaped string, so that no entity is cut in half.
+		while ( mb_strlen( $escaped ) > self::EXAMPLE_MAX_LENGTH ) {
+			$text = mb_substr( $text, 0, -1 );
+			$escaped = self::escapeExampleText( $text );
+		}
+		return $escaped;
+	}
+
+	/**
+	 * @param string $text Plain text
+	 * @return string HTML
+	 */
+	public static function escapeExampleText( string $text ): string {
+		return htmlspecialchars( $text, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8' );
+	}
+
+	/**
+	 * Drop the cached settings, so that the next read sees what is in the database
+	 */
+	public static function clearSettingsCache(): void {
+		self::$settings = [];
 	}
 
 	/**

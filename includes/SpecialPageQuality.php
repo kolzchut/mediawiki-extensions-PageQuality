@@ -8,6 +8,7 @@ use FormOptions;
 use HTMLForm;
 use MediaWiki\Extension\ArticleContentArea\ArticleContentArea;
 use MediaWiki\Extension\ArticleType\ArticleType;
+use MediaWiki\Html\Html;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Title\TitleFactory;
 use MWException;
@@ -112,6 +113,7 @@ class SpecialPageQuality extends SpecialPage {
 	 */
 	private function getGeneralSettingTab( string $save_link, array $saved_settings_values ) {
 		$class_type = "General";
+		$settings_html = '';
 		foreach ( Scorer::getGeneralSettings() as $type => $data ) {
 			if ( !empty( $data['dependsOnExtension'] ) &&
 				 !ExtensionRegistry::getInstance()->isLoaded( $data['dependsOnExtension'] )
@@ -122,28 +124,7 @@ class SpecialPageQuality extends SpecialPage {
 			if ( array_key_exists( $type, $saved_settings_values ) ) {
 				$value = $saved_settings_values[$type];
 			}
-			if ( array_key_exists( 'data_type', $data ) && $data['data_type'] == "list" ) {
-				$settings_html .= '
-					<div class="form-group">
-						<label for="' . $type . '">' .
-							$this->msg( $data['name'] ) . ' ' . $this->msg( 'pq_settings_list_field_help' )->escaped() .
-						'</label>' .
-						'<textarea name="' . $type . '" class="form-control"'
-							. ' placeholder="' . $data['default'] . '">' .
-							$value .
-						'</textarea>
-					</div>
-				';
-			} else {
-				$settings_html = '
-					<div class="form-group">
-						<label for="' . $type . '">' . $this->msg( $data['name'] ) . '</label>
-						<input name="' . $type . '" type="text" class="form-control" placeholder="' .
-								 $data['default'] . '" value=' . $value .
-						 '>
-					</div>
-				';
-			}
+			$settings_html .= $this->getSettingFieldHtml( $type, $data, $value );
 		}
 		$tabsContent = '
 			<div id="settings_list" style="margin-top:10px;">
@@ -181,69 +162,20 @@ class SpecialPageQuality extends SpecialPage {
 		$this->getOutput()->enableOOUI();
 		$this->getOutput()->setPageTitleMsg( $this->msg( 'pq_settings_title' ) );
 
-		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
-		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
-
-		// @todo Save settings only if they changed ("dirty state")
-		// @todo Delete saved settings if they're reset to their default setting
-		if ( $this->getRequest()->getVal( 'save' ) == 1 ) {
-			foreach ( Scorer::getAllScorers() as $scorer_class ) {
-				$all_checklist = $scorer_class::getCheckList();
-				foreach ( $all_checklist as $type => $check ) {
-					$value_field = "value";
-					if ( array_key_exists( 'data_type', $check ) && $check['data_type'] == "list" ) {
-						$value_field = "value_blob";
-					}
-
-					$value = $this->getRequest()->getVal( $type );
-					if ( $value ) {
-						$dbw->upsert(
-							'pq_settings',
-							[ 'setting' => $type, $value_field => $value ],
-							'setting',
-							[ $value_field => $value ?? null ],
-						);
-					}
-				}
-			}
-			foreach ( Scorer::getGeneralSettings() as $type => $data ) {
-				$savedValue = $this->getRequest()->getVal( $type );
-				if ( $savedValue !== null ) {
-					$value_field = "value";
-					if ( array_key_exists( 'data_type', $check ) && $check['data_type'] == "list" ) {
-						$value_field = "value_blob";
-					}
-					$value = $this->getRequest()->getVal( $type );
-					$dbw->upsert(
-						'pq_settings',
-						[ 'setting' => $type, $value_field => $value ],
-						'setting',
-						[ $value_field => $value ?? null ],
-					);
-				}
-			}
-			if ( $this->getRequest()->getVal( 'regenerate_scores' ) == "yes" ) {
-				$dbw->delete( 'pq_issues', ISQLPlatform::ALL_ROWS );
-				$query = self::getQueryForAllPages();
-				$res = $dbr->select(
-					$query['tables'],
-					$query['fields'],
-					$query['conds'],
-					__METHOD__,
-					[],
-					$query['join_conds']
-				);
-				$jobs = [];
-				foreach ( $res as $row ) {
-					$jobs[] = new RefreshJob( $this->titleFactory->newFromID( $row->page_id ) );
-				}
-				MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
+		// Settings change only on a POST that carries the user's edit token. A GET,
+		// or a POST without a valid token, changes nothing.
+		$request = $this->getRequest();
+		if ( $request->wasPosted() && $request->getCheck( 'save' ) ) {
+			if ( $this->getContext()->getCsrfTokenSet()->matchTokenField( 'wpEditToken' ) ) {
+				$this->saveSettings();
+			} else {
+				$this->getOutput()->addHTML( Html::errorBox( $this->msg( 'sessionfailure' )->parse() ) );
 			}
 		}
 
 		$saved_settings_values = Scorer::getSettingValues();
 
-		$save_link = $this->getPageTitle( 'settings' )->getLocalURL( [ 'save' => 1 ] );
+		$save_link = $this->getPageTitle( 'settings' )->getLocalURL();
 		$tabPanels = [];
 
 		$tabPanels[] = $this->getGeneralSettingTab( $save_link, $saved_settings_values );
@@ -261,27 +193,7 @@ class SpecialPageQuality extends SpecialPage {
 				if ( array_key_exists( $type, $saved_settings_values ) ) {
 					$value = $saved_settings_values[$type];
 				}
-				if ( array_key_exists( 'data_type', $data ) && $data['data_type'] == "list" ) {
-					$settings_html .=
-						'<div class="form-group">
-							<label for="' . $type . '">' . $this->msg( $data['name'] ) .
-								  ' ' . $this->msg( 'pq_settings_list_field_help' )->escaped() .
-							'</label>' .
-							'<textarea name="' . $type . '" class="form-control"'
-							. ' placeholder="' . $data['default'] . '">'
-									  . $value .
-						  '</textarea>
-						</div>
-					';
-				} else {
-					$settings_html .= '
-						<div class="form-group">
-							<label for="' . $type . '">' . $this->msg( $data['name'] ) . '</label>
-							<input name="' . $type . '" type="text" class="form-control" placeholder="' .
-								  $data['default'] . '" value=' . $value . '>
-						</div>
-					';
-				}
+				$settings_html .= $this->getSettingFieldHtml( $type, $data, $value );
 			}
 			if ( empty( $settings_html ) ) {
 				continue;
@@ -325,8 +237,10 @@ class SpecialPageQuality extends SpecialPage {
 		] );
 
 		$html = '
-		<form action="' . $save_link . '" method="post">
+		<form action="' . htmlspecialchars( $save_link ) . '" method="post">
 			' . $form . '
+				' . Html::hidden( 'save', '1' ) . '
+				' . Html::hidden( 'wpEditToken', $this->getContext()->getCsrfTokenSet()->getToken()->toString() ) . '
 				<input type="checkbox" id="regenerate_scores" name="regenerate_scores" value="yes">
 				<label for="regenerate_scores"> ' . $this->msg( "regenerate_scores_checkbox" ) . '</label><br>
 				<button type="submit" class="btn btn-primary">' .
@@ -337,6 +251,101 @@ class SpecialPageQuality extends SpecialPage {
 
 		$this->getOutput()->addHTML( $html );
 		$this->getOutput()->addModules( 'ext.page_quality.special' );
+	}
+
+	/**
+	 * Store the submitted settings. The caller has checked the request method and token.
+	 *
+	 * @return void
+	 */
+	private function saveSettings(): void {
+		$dbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase();
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
+
+		// @todo Save settings only if they changed ("dirty state")
+		// @todo Delete saved settings if they're reset to their default setting
+		foreach ( Scorer::getAllScorers() as $scorer_class ) {
+			$all_checklist = $scorer_class::getCheckList();
+			foreach ( $all_checklist as $type => $check ) {
+				$value_field = "value";
+				if ( array_key_exists( 'data_type', $check ) && $check['data_type'] == "list" ) {
+					$value_field = "value_blob";
+				}
+
+				$value = $this->getRequest()->getVal( $type );
+				if ( $value ) {
+					$dbw->upsert(
+						'pq_settings',
+						[ 'setting' => $type, $value_field => $value ],
+						'setting',
+						[ $value_field => $value ?? null ],
+					);
+				}
+			}
+		}
+		foreach ( Scorer::getGeneralSettings() as $type => $data ) {
+			$savedValue = $this->getRequest()->getVal( $type );
+			if ( $savedValue !== null ) {
+				// General settings, lists included, are read back from "value"
+				// (see Scorer::getSettingValues())
+				$dbw->upsert(
+					'pq_settings',
+					[ 'setting' => $type, 'value' => $savedValue ],
+					'setting',
+					[ 'value' => $savedValue ],
+				);
+			}
+		}
+		Scorer::clearSettingsCache();
+
+		if ( $this->getRequest()->getVal( 'regenerate_scores' ) == "yes" ) {
+			$dbw->delete( 'pq_issues', ISQLPlatform::ALL_ROWS );
+			$query = self::getQueryForAllPages();
+			$res = $dbr->select(
+				$query['tables'],
+				$query['fields'],
+				$query['conds'],
+				__METHOD__,
+				[],
+				$query['join_conds']
+			);
+			$jobs = [];
+			foreach ( $res as $row ) {
+				$jobs[] = new RefreshJob( $this->titleFactory->newFromID( $row->page_id ) );
+			}
+			MediaWikiServices::getInstance()->getJobQueueGroup()->push( $jobs );
+		}
+	}
+
+	/**
+	 * Render one setting's form field. Every value is escaped and quoted, so a saved
+	 * value can never close the attribute or the textarea it is printed in.
+	 *
+	 * @param string $type Setting key, used as the field name
+	 * @param array $data The setting's definition
+	 * @param mixed $value The saved or default value
+	 * @return string HTML
+	 */
+	private function getSettingFieldHtml( string $type, array $data, $value ): string {
+		$id = 'pq-setting-' . $type;
+		$isList = ( $data['data_type'] ?? null ) === 'list';
+		$label = $this->msg( $data['name'] )->escaped();
+		if ( $isList ) {
+			$label .= ' ' . $this->msg( 'pq_settings_list_field_help' )->escaped();
+		}
+		$attribs = [
+			'id' => $id,
+			'class' => 'form-control',
+			'placeholder' => (string)( $data['default'] ?? '' ),
+		];
+		$value = (string)( $value ?? '' );
+		$field = $isList
+			? Html::textarea( $type, $value, $attribs )
+			: Html::input( $type, $value, 'text', $attribs );
+
+		return Html::rawElement( 'div', [ 'class' => 'form-group' ],
+			Html::rawElement( 'label', [ 'for' => $id ], $label ) . $field
+		);
 	}
 
 	/**

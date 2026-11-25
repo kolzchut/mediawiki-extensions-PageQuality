@@ -41,13 +41,13 @@ class TableRules extends BaseScorer {
 			if ( $column_count > self::getSetting( "table_columns" ) ) {
 				$response['table_columns'][] = [
 					"score" => self::getCheckList()['table_columns']['severity'],
-					"example" => wfMessage( "pq_occurance_table_columns", $column_count )
+					"example" => wfMessage( "pq_occurance_table_columns", $column_count )->escaped()
 				];
 			}
 			if ( $row_count < self::getSetting( "table_rows" ) ) {
 				$response['table_rows'][] = [
 					"score" => self::getCheckList()['table_rows']['severity'],
-					"example" => wfMessage( "pq_occurance_table_rows", $row_count )
+					"example" => wfMessage( "pq_occurance_table_rows", $row_count )->escaped()
 				];
 			}
 		}

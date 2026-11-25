@@ -66,33 +66,22 @@ class Readability extends BaseScorer {
 	public function calculatePageScore(): ?array {
 		$blocked_expressions = self::getSetting( "blocked_expressions" );
 		if ( !empty( $blocked_expressions ) ) {
+			// Match against the text as a reader sees it, with the parser's entities decoded
+			$plainText = html_entity_decode(
+				strip_tags( self::getText() ), ENT_QUOTES | ENT_HTML5, 'UTF-8'
+			);
 			foreach ( $blocked_expressions as $blocked_expression ) {
 				if ( trim( $blocked_expression ) === '' ) {
 					continue;
 				}
-				$offset = 0;
-				$plainText = strip_tags( self::getText() );
-				$offset = strpos( $plainText, $blocked_expression, $offset );
+				$expressionLength = mb_strlen( $blocked_expression );
+				$offset = mb_strpos( $plainText, $blocked_expression );
 				while ( $offset !== false ) {
-					$cut_off_start_offset = max( 0, $offset - 30 );
-					if ( strpos( $plainText, " ", $cut_off_start_offset ) !== false ) {
-						$cut_off_start_offset = strpos( $plainText, " ", $cut_off_start_offset );
-					}
-
 					$this->response[ 'blocked_expressions' ][] = [
 						"score" => self::getCheckList()[ 'blocked_expressions' ][ 'severity' ],
-						"example" => substr_replace(
-							substr(
-								$plainText,
-								$cut_off_start_offset,
-								$cut_off_start_offset + strlen( $blocked_expression ) + 30
-							),
-							"<b>" . $blocked_expression . "</b>",
-							$offset - $cut_off_start_offset,
-							strlen( $blocked_expression )
-						)
+						"example" => self::makeHighlightedExample( $plainText, $offset, $expressionLength )
 					];
-					$offset = strpos( $plainText, $blocked_expression, $offset + strlen( $blocked_expression ) );
+					$offset = mb_strpos( $plainText, $blocked_expression, $offset + $expressionLength );
 				}
 			}
 		}
@@ -103,6 +92,54 @@ class Readability extends BaseScorer {
 			$this->recurseDomNodes( $pNode );
 		}
 		return $this->response;
+	}
+
+	/**
+	 * Build the example for a blocked expression: up to 30 characters of text on
+	 * each side of the match, with the match in bold. Every part taken from the
+	 * page is escaped, and the result fits the example column with its tags whole.
+	 *
+	 * @param string $plainText Plain text of the page, entities decoded
+	 * @param int $offset Character offset of the match
+	 * @param int $length Character length of the match
+	 * @return string HTML
+	 */
+	public static function makeHighlightedExample( string $plainText, int $offset, int $length ): string {
+		$contextLength = 30;
+		$start = max( 0, $offset - $contextLength );
+		$before = mb_substr( $plainText, $start, $offset - $start );
+		// Start on a word boundary when the excerpt does not start the text
+		$space = mb_strpos( $before, ' ' );
+		if ( $start > 0 && $space !== false ) {
+			$before = mb_substr( $before, $space + 1 );
+		}
+		$match = mb_substr( $plainText, $offset, $length );
+		$after = mb_substr( $plainText, $offset + $length, $contextLength );
+
+		$example = self::joinHighlightedExample( $before, $match, $after );
+		while ( mb_strlen( $example ) > self::EXAMPLE_MAX_LENGTH && $match !== '' ) {
+			if ( $after !== '' ) {
+				$after = mb_substr( $after, 0, -1 );
+			} elseif ( $before !== '' ) {
+				$before = mb_substr( $before, 1 );
+			} else {
+				$match = mb_substr( $match, 0, -1 );
+			}
+			$example = self::joinHighlightedExample( $before, $match, $after );
+		}
+		return $example;
+	}
+
+	/**
+	 * @param string $before Plain text
+	 * @param string $match Plain text
+	 * @param string $after Plain text
+	 * @return string HTML
+	 */
+	private static function joinHighlightedExample( string $before, string $match, string $after ): string {
+		return self::escapeExampleText( $before ) .
+			'<b>' . self::escapeExampleText( $match ) . '</b>' .
+			self::escapeExampleText( $after );
 	}
 
 	/**
@@ -134,7 +171,7 @@ class Readability extends BaseScorer {
 				if ( $count_of_li > self::getSetting( "list_items_per_level_max" ) ) {
 					$this->response['list_items_per_level_max'][] = [
 						"score" => self::getCheckList()['list_items_per_level_max']['severity'],
-						"example" => mb_substr( $pNode->textContent, 0, 50 )
+						"example" => self::makeTextExample( $pNode->textContent, 50 )
 					];
 				}
 			}
@@ -171,12 +208,12 @@ class Readability extends BaseScorer {
 			if ( $wc > self::getSetting( "sentence_length_max" ) ) {
 				$this->response['sentence_length_max'][] = [
 					"score" => self::getCheckList()['sentence_length_max']['severity'],
-					"example" => mb_substr( $sentence, 0, 50 )
+					"example" => self::makeTextExample( $sentence, 50 )
 				];
 			} elseif ( $wc > self::getSetting( "sentence_length" ) ) {
 				$this->response['sentence_length'][] = [
 					"score" => self::getCheckList()['sentence_length']['severity'],
-					"example" => mb_substr( $sentence, 0, 50 )
+					"example" => self::makeTextExample( $sentence, 50 )
 				];
 			}
 		}
@@ -189,12 +226,12 @@ class Readability extends BaseScorer {
 		if ( $wc > self::getSetting( "para_length_max" ) ) {
 			$this->response['para_length_max'][] = [
 				"score" => self::getCheckList()['para_length_max']['severity'],
-				"example" => mb_substr( $str, 0, 50 )
+				"example" => self::makeTextExample( $str, 50 )
 			];
 		} elseif ( $wc > self::getSetting( "para_length" ) ) {
 			$this->response['para_length'][] = [
 				"score" => self::getCheckList()['para_length']['severity'],
-				"example" => mb_substr( $str, 0, 50 )
+				"example" => self::makeTextExample( $str, 50 )
 			];
 		}
 	}

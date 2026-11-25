@@ -58,7 +58,7 @@ class CalloutsRules extends BaseScorer {
 				if ( in_array( $previousNode->tagName, [ "h1", "h2", "h3", "h4" ] ) ) {
 					$response['callout_section_begin'][] = [
 						"score" => self::getCheckList()['callout_section_begin']['severity'],
-						"example" => $divNodes->item( $i )->textContent
+						"example" => self::makeTextExample( $divNodes->item( $i )->textContent )
 					];
 				}
 				$class = $previousNode->getAttribute( 'class' );
@@ -70,7 +70,7 @@ class CalloutsRules extends BaseScorer {
 				) {
 					$response['callout_gaps'][] = [
 						"score" => self::getCheckList()['callout_gaps']['severity'],
-						"example" => $divNodes->item( $i )->textContent
+						"example" => self::makeTextExample( $divNodes->item( $i )->textContent )
 					];
 				}
 			}
