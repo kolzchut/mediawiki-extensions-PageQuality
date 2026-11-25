@@ -2,8 +2,8 @@
 
 namespace MediaWiki\Extension\PageQuality;
 
-use MediaWiki\Output\Hook\BeforePageDisplayHook;
 use MediaWiki\Html\Html;
+use MediaWiki\Output\Hook\BeforePageDisplayHook;
 use MediaWiki\Output\OutputPage;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionRecord;
