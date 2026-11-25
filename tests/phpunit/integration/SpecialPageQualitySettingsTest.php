@@ -141,6 +141,39 @@ class SpecialPageQualitySettingsTest extends SpecialPageTestBase {
 		$this->assertSettingValuesPrintedAsText( $html );
 	}
 
+	public function testSavingTwiceUpdatesInPlace() {
+		$admin = $this->getAdmin();
+		foreach ( [ '5', '7' ] as $red ) {
+			$request = $this->newRequest(
+				$admin, [ 'red' => $red, 'blocked_expressions' => "expression $red" ], true
+			);
+			$request->setVal( 'wpEditToken', $this->getValidToken( $request ) );
+			$this->executeSpecialPage( 'settings', $request, 'qqx', $admin );
+		}
+
+		$this->assertSame( [ '7' ], $this->getStoredValues( 'red' ) );
+		$this->assertSame(
+			[ 'expression 7' ],
+			$this->getDb()->newSelectQueryBuilder()
+				->select( 'value_blob' )
+				->from( 'pq_settings' )
+				->where( [ 'setting' => 'blocked_expressions' ] )
+				->caller( __METHOD__ )
+				->fetchFieldValues()
+		);
+		$this->assertSame(
+			[],
+			$this->getDb()->newSelectQueryBuilder()
+				->select( 'setting' )
+				->from( 'pq_settings' )
+				->groupBy( 'setting' )
+				->having( 'COUNT(*) > 1' )
+				->caller( __METHOD__ )
+				->fetchFieldValues(),
+			'A setting has more than one row'
+		);
+	}
+
 	public function testStoredValuesArePrintedAsText() {
 		// Separate inserts: a multi-row insert needs the same columns in every row
 		$this->getDb()->newInsertQueryBuilder()

@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension\PageQuality;
 
+use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\DedupeSettings;
 use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\fixScoreLogAfterAddingStatus;
 use MediaWiki\Extension\PageQuality\Maintenance\PostDatabaseUpdate\RegenerateIssueExamples;
 use MediaWiki\Installer\Hook\LoadExtensionSchemaUpdatesHook;
@@ -22,6 +23,19 @@ class InstallerHooks implements LoadExtensionSchemaUpdatesHook {
 		$updater->addExtensionTable( 'pq_score', "$dir/pq_score.sql" );
 		$updater->addExtensionTable( 'pq_score_log', "$dir/pq_score_log.sql" );
 		$updater->addExtensionField( 'pq_settings', 'value_blob', "$dir/pq_settings_patch_add_value_blob.sql" );
+
+		// Saves keyed on "setting" need a unique index on it. Remove the duplicate rows
+		// earlier saves left behind first, or the index cannot be added. Both steps run
+		// in this order on each wiki's own database.
+		$updater->addExtensionUpdate( [
+			'runMaintenance',
+			DedupeSettings::class,
+			"$dir/../maintenance/PostDatabaseUpdate/dedupeSettings.php"
+		] );
+		// Names as literals: reading a constant of the maintenance class would load its file here
+		$updater->addExtensionIndex(
+			'pq_settings', 'pq_settings_setting', "$dir/pq_settings_patch_unique_setting.sql"
+		);
 
 		// Change the timestamp field to MediaWiki's binary(14). The accompanying maintenance script
 		// (maintenance/PostDatabaseUpdate/migrateTimestampToMWFormat.php) is intentionally not

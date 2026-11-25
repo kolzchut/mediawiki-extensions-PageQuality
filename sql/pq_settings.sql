@@ -4,3 +4,4 @@ CREATE TABLE /*_*/pq_settings (
   `value` varchar(50)
 );
 CREATE INDEX /*i*/pq_settings_index ON /*_*/pq_settings (id);
+CREATE UNIQUE INDEX /*i*/pq_settings_setting ON /*_*/pq_settings (setting);

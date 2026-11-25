@@ -15,7 +15,8 @@
 	"AutoloadClasses": {
 		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\MigrateTimestampToMWFormat": "maintenance/PostDatabaseUpdate/migrateTimestampToMWFormat.php",
 		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\fixScoreLogAfterAddingStatus": "maintenance/PostDatabaseUpdate/fixScoreLogAfterAddingStatus.php",
-		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\RegenerateIssueExamples": "maintenance/PostDatabaseUpdate/regenerateIssueExamples.php"
+		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\RegenerateIssueExamples": "maintenance/PostDatabaseUpdate/regenerateIssueExamples.php",
+		"MediaWiki\\Extension\\PageQuality\\Maintenance\\PostDatabaseUpdate\\DedupeSettings": "maintenance/PostDatabaseUpdate/dedupeSettings.php"
 	},
 	"config": {
 		"PageQualityNamespaces": {

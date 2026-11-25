@@ -201,11 +201,14 @@ abstract class Scorer {
 			return self::$settings;
 		}
 		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
+		// Oldest first, so that if a setting has more than one row (a wiki whose
+		// duplicates update.php has not yet removed), the latest save wins
 		$res = $dbr->select(
 			'pq_settings',
 			'*',
 			[ true ],
-			__METHOD__
+			__METHOD__,
+			[ 'ORDER BY' => 'id' ]
 		);
 
 		$all_checklist = self::getAllChecksList();
